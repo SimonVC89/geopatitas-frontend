@@ -1,0 +1,58 @@
+@reference "tailwindcss";
+
+/* Navegación Principal */
+.navbar-btn-login {
+  @apply font-semibold text-sm;
+  color: var(--geo-green);
+  background: transparent;
+  border: 2px solid rgba(120, 184, 100, 0.3);
+  padding: 0.5rem 1.4rem;
+  border-radius: 99px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.navbar-btn-login:hover {
+  background: var(--geo-green);
+  color: white;
+  border-color: var(--geo-green);
+}
+
+.navbar-btn-register {
+  @apply font-bold text-sm;
+  color: white;
+  background: var(--geo-yellow);
+  border: 2px solid var(--geo-yellow);
+  padding: 0.5rem 1.6rem;
+  border-radius: 99px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.navbar-btn-register:hover {
+  background: #E5B24A;
+  border-color: #E5B24A;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(239, 191, 92, 0.4);
+}
+
+.navbar-btn-danger {
+  @apply font-semibold text-sm;
+  color: #EF4444;
+  background: transparent;
+  border: 2px solid rgba(239, 68, 68, 0.2);
+  padding: 0.5rem 1.4rem;
+  border-radius: 99px;
+  transition: all 0.3s ease;
+}
+
+.navbar-btn-danger:hover {
+  background: #EF4444;
+  color: white;
+  border-color: #EF4444;
+}

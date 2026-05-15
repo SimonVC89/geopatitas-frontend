@@ -6,80 +6,61 @@ export default function Navbar() {
   const { user, isAuthenticated, isGuest, logout } = useAuth();
 
   return (
-    <nav className="bg-white shadow-md sticky top-0 z-50">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+    <nav className="bg-white shadow-sm sticky top-0 z-50 border-b border-gray-100">
+      <div className="container mx-auto px-6">
+        <div className="flex items-center justify-between h-24">
+
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 py-2">
+          <Link to="/" className="flex items-center">
             <img
               src={logo}
               alt="GeoPatitas"
-              className="h-12 w-auto max-w-[150px] object-contain drop-shadow-md hover:drop-shadow-lg transition-all"
+              className="h-24 w-auto"
             />
           </Link>
 
-          {/* Navigation Links */}
-          <div className="hidden md:flex items-center gap-6">
+          {/* Mis Reportes — solo cuando hay sesión */}
+          {isAuthenticated && (
             <Link
-              to="/mapa"
-              className="text-gray-700 hover:text-green-600 font-medium transition-colors"
+              to="/mis-reportes"
+              className="hidden md:block text-gray-600 hover:text-green-600 font-medium text-sm transition-colors"
             >
-              Mapa
+              Mis Reportes
             </Link>
-            <Link
-              to="/reportar"
-              className="text-gray-700 hover:text-green-600 font-medium transition-colors"
-            >
-              Reportar
-            </Link>
+          )}
 
-            {isAuthenticated && (
-              <Link
-                to="/mis-reportes"
-                className="text-gray-700 hover:text-green-600 font-medium transition-colors"
-              >
-                Mis Reportes
-              </Link>
-            )}
-          </div>
-
-          {/* User Menu */}
-          <div className="flex items-center gap-4">
+          {/* Acciones de usuario */}
+          <div className="flex items-center gap-3">
             {!isAuthenticated && !isGuest ? (
               <>
                 <Link
                   to="/login"
-                  className="text-gray-700 hover:text-green-600 font-medium transition-colors"
+                  className="text-sm font-semibold border-2 border-[#78B864] text-[#78B864] rounded-full px-5 py-2 whitespace-nowrap transition-all hover:bg-[#78B864] hover:text-white"
                 >
                   Iniciar Sesión
                 </Link>
                 <Link
                   to="/register"
-                  className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+                  className="text-sm font-bold bg-[#EFBF5C] text-white border-2 border-[#EFBF5C] rounded-full px-5 py-2 whitespace-nowrap transition-all shadow-md hover:bg-[#E5B24A] hover:border-[#E5B24A]"
                 >
                   Registrarse
                 </Link>
               </>
             ) : (
               <>
-                <div className="flex items-center gap-2">
-                  {isGuest ? (
-                    <span className="text-gray-600 text-sm">Modo Invitado</span>
-                  ) : (
-                    <span className="text-gray-700 font-medium">
-                      Hola, {user?.name}
-                    </span>
-                  )}
-                </div>
+                <span className="text-sm text-gray-500">
+                  {isGuest ? 'Modo Invitado' : `Hola, ${user?.name}`}
+                </span>
                 <button
                   onClick={logout}
-                  className="bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-lg transition-colors"
+                  className="text-sm font-semibold border-2 border-red-500 text-red-500 rounded-full px-5 py-2 whitespace-nowrap transition-all bg-transparent cursor-pointer hover:bg-red-500 hover:text-white"
                 >
                   Cerrar Sesión
                 </button>
               </>
             )}
           </div>
+
         </div>
       </div>
     </nav>

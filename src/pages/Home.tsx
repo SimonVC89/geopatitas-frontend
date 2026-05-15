@@ -1,395 +1,309 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import {
+  MapPin, Brain, Bell, PawPrint, Search, Mail,
+  Heart, Shield, ChevronLeft, ChevronRight,
+} from 'lucide-react';
+import { colors, gradientDivider } from '../styles/theme';
+import logo from '../assets/Logo Geopatitas.png';
+import './Home.css';
 
+// ─── Pasos del carrusel ──────────────────────────────────────────
+const HOW_STEPS = [
+  {
+    Icon: PawPrint,
+    color: colors.yellow,
+    bg: 'rgba(239,191,92,0.13)',
+    title: 'Reporta a tu mascota',
+    desc: 'Sube una foto, escribe una descripción con sus características y marca en el mapa el lugar exacto donde lo viste por última vez.',
+  },
+  {
+    Icon: Brain,
+    color: colors.blue,
+    bg: 'rgba(120,187,230,0.13)',
+    title: 'La IA analiza tu reporte',
+    desc: 'Nuestro motor de HuggingFace convierte la descripción en un vector semántico y lo almacena en la base de datos con pgvector.',
+  },
+  {
+    Icon: Search,
+    color: colors.green,
+    bg: 'rgba(120,184,100,0.13)',
+    title: 'Cruzamos datos en tiempo real',
+    desc: 'PostGIS busca reportes en un radio de 5 km y la IA compara descripciones para encontrar coincidencias, aunque uses palabras distintas.',
+  },
+  {
+    Icon: Mail,
+    color: '#C084B8',
+    bg: 'rgba(192,132,184,0.13)',
+    title: 'Te avisamos al instante',
+    desc: 'Cuando la similitud entre reportes supera el 85%, recibes un correo automático con los datos de contacto del otro usuario.',
+  },
+];
+
+// ─── GeoJSON: máscara inversa ────────────────────────────────────
+// Polígono CONVEXO — garantiza cero concavidades y cero gaps.
+const WORLD: [number, number][] = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
+
+const COVERAGE_ZONE: [number, number][] = [
+  [-71.720, -32.940],  // NW
+  [-71.555, -32.930],  // N  (costa Viña del Mar)
+  [-71.430, -32.958],  // NE (norte Quilpué)
+  [-71.375, -33.015],  // E
+  [-71.375, -33.098],  // SE
+  [-71.445, -33.148],  // S  (sur Quilpué)
+  [-71.720, -33.112],  // SW (sur Valparaíso)
+  [-71.720, -32.940],  // cierra
+];
+
+const inverseMask = {
+  type: 'Feature' as const,
+  geometry: { type: 'Polygon' as const, coordinates: [WORLD, COVERAGE_ZONE] },
+  properties: {},
+};
+
+// ─── Fotos de mascotas ───────────────────────────────────────────
+const PET_IMGS = [
+  { url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=600&q=80', alt: 'Golden retriever' },
+  { url: 'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=600&q=80', alt: 'Perro labrador' },
+  { url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=600&q=80', alt: 'Gato callejero' },
+];
+
+// ─── Componente ──────────────────────────────────────────────────
 export default function Home() {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setStep(s => (s + 1) % HOW_STEPS.length), 4500);
+    return () => clearInterval(t);
+  }, []);
+
+  const { Icon: StepIcon, color, bg, title, desc } = HOW_STEPS[step];
+
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="home">
 
-      {/* ─── HERO ─── */}
-      <section
-        className="relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #FDFBF7 0%, #EFF8EC 50%, #E8F4FB 100%)',
-          paddingTop: '6rem',
-          paddingBottom: '8rem',
-        }}
-      >
-        {/* Blobs decorativos */}
-        <div
-          style={{
-            position: 'absolute', top: '-80px', right: '-80px',
-            width: '500px', height: '500px', borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(120,187,230,0.18) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute', bottom: '-60px', left: '-60px',
-            width: '400px', height: '400px', borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(120,184,100,0.15) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }}
-        />
+      {/* ── HERO ── */}
+      <section className="home-hero">
+        <div className="home-hero__inner">
 
-        <div className="container mx-auto px-6 relative" style={{ zIndex: 1 }}>
-          <div className="max-w-3xl mx-auto text-center">
+          <div className="home-hero__content">
+            <span className="coverage-badge">
+              <Shield size={12} /> Valparaíso · Viña del Mar · Quilpué — V Región
+            </span>
 
-            {/* Badge */}
-            <div
-              className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-full bg-white border border-green-200 shadow-sm"
-              style={{ animation: 'pulse 3s ease-in-out infinite' }}
-            >
-              <span
-                className="w-2 h-2 rounded-full bg-green-500"
-                style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
-              />
-              <span className="text-xs font-bold text-green-700 tracking-widest uppercase">
-                Monitoreo activo · V Región
-              </span>
-            </div>
-
-            {/* Título */}
-            <h1
-              className="font-extrabold tracking-tight mb-6"
-              style={{
-                fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
-                lineHeight: 1.1,
-                color: '#2D3748',
-              }}
-            >
+            <h1 className="home-hero__title">
               Juntos es más fácil{' '}
-              <br />
-              <span
-                style={{
-                  background: 'linear-gradient(90deg, #78B864, #78BBE6)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
-              >
-                encontrar a tu mascota
-              </span>
+              <span className="home-hero__gradient-text">encontrar a tu mascota</span>
             </h1>
 
-            {/* Subtítulo */}
-            <p
-              className="mb-10 leading-relaxed"
-              style={{ fontSize: '1.2rem', color: '#4A5568', maxWidth: '38rem', margin: '0 auto 2.5rem' }}
-            >
-              Sabemos lo difícil que es perder a un amigo.{' '}
-              <strong style={{ color: '#2D3748' }}>GeoPatitas</strong> usa inteligencia
-              artificial y la comunidad para reunir familias en Valparaíso, Viña del Mar y Quilpué.
+            <p className="home-hero__subtitle">
+              Plataforma con <strong>inteligencia artificial y geolocalización</strong> para
+              reunir familias con sus mascotas perdidas en la V Región de Chile.
             </p>
 
-            {/* Botones */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Link
-                to="/reportar"
-                style={{
-                  background: '#EFBF5C',
-                  color: '#fff',
-                  fontWeight: 700,
-                  padding: '1rem 2rem',
-                  borderRadius: '1rem',
-                  fontSize: '1.1rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  boxShadow: '0 8px 25px rgba(239,191,92,0.35)',
-                  transition: 'all 0.3s ease',
-                  textDecoration: 'none',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = '0 14px 35px rgba(239,191,92,0.45)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 25px rgba(239,191,92,0.35)';
-                }}
-              >
-                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-                Perdí a mi mascota
+            <div>
+              <Link to="/reportar" className="btn-primary">
+                <Heart size={20} fill="white" /> Perdí a mi mascota
               </Link>
+            </div>
 
-              <Link
-                to="/reportar?type=found"
-                style={{
-                  background: '#fff',
-                  color: '#78B864',
-                  fontWeight: 700,
-                  padding: '1rem 2rem',
-                  borderRadius: '1rem',
-                  fontSize: '1.1rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  border: '2px solid #78B864',
-                  boxShadow: '0 4px 15px rgba(120,184,100,0.15)',
-                  transition: 'all 0.3s ease',
-                  textDecoration: 'none',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.background = '#78B864';
-                  (e.currentTarget as HTMLElement).style.color = '#fff';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.background = '#fff';
-                  (e.currentTarget as HTMLElement).style.color = '#78B864';
-                }}
-              >
-                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
-                </svg>
-                Encontré una mascota
+            <div className="home-hero__ctas">
+              <Link to="/reportar?type=found" className="btn-outline-green">
+                <Search size={15} /> Encontré una mascota
               </Link>
-
-              <Link
-                to="/mapa"
-                style={{
-                  background: '#fff',
-                  color: '#78BBE6',
-                  fontWeight: 700,
-                  padding: '1rem 2rem',
-                  borderRadius: '1rem',
-                  fontSize: '1.1rem',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  border: '2px solid #78BBE6',
-                  boxShadow: '0 4px 15px rgba(120,187,230,0.15)',
-                  transition: 'all 0.3s ease',
-                  textDecoration: 'none',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.background = '#78BBE6';
-                  (e.currentTarget as HTMLElement).style.color = '#fff';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.background = '#fff';
-                  (e.currentTarget as HTMLElement).style.color = '#78BBE6';
-                }}
-              >
-                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Ver Mapa
+              <Link to="/mapa" className="btn-outline-blue">
+                <MapPin size={15} /> Ver Mapa
               </Link>
             </div>
           </div>
+
+          <div className="home-hero__image">
+            <img src={logo} alt="GeoPatitas" className="home-hero__img" />
+          </div>
+
         </div>
       </section>
 
-      {/* ─── STATS ─── */}
-      <section style={{ background: '#fff', borderBottom: '1px solid #F0F0F0', padding: '2.5rem 0' }}>
-        <div className="container mx-auto px-6">
-          <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto text-center">
+      {/* ── ESTADÍSTICAS ── */}
+      <section className="home-stats">
+        <div className="home-stats__grid">
+          {[
+            { Icon: MapPin,   value: '3',    label: 'Comunas cubiertas',    color: colors.blue   },
+            { Icon: Bell,     value: '24/7', label: 'Monitoreo activo',     color: colors.green  },
+            { Icon: Brain,    value: '85%',  label: 'Precisión de alertas', color: colors.yellow },
+          ].map(({ Icon, value, label, color }) => (
+            <div key={label} className="home-stats__item">
+              <Icon size={20} color={color} />
+              <span className="home-stats__value" style={{ color }}>{value}</span>
+              <span className="home-stats__label">{label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── CARACTERÍSTICAS ── */}
+      <section className="home-features">
+        <div className="home-features__inner">
+          <h2 className="section-title">Tecnología al servicio del reencuentro</h2>
+          <div style={gradientDivider} />
+
+          <div className="home-features__cards">
             {[
-              { value: 'V Región', label: 'Cobertura activa', color: '#78B864' },
-              { value: '24/7', label: 'Monitoreo continuo', color: '#78BBE6' },
-              { value: '+85%', label: 'Precisión de la IA', color: '#EFBF5C' },
-            ].map(stat => (
-              <div key={stat.label}>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: stat.color, lineHeight: 1 }}>
-                  {stat.value}
+              { Icon: MapPin, color: colors.green,  bg: 'rgba(120,184,100,0.1)',  title: 'Georreferenciación',      desc: 'Marca exactamente dónde viste la mascota. El sistema monitorea automáticamente un radio de 5 km.' },
+              { Icon: Brain,  color: colors.blue,   bg: 'rgba(120,187,230,0.1)',  title: 'Inteligencia Artificial', desc: 'La IA compara descripciones semánticamente, encontrando coincidencias aunque se usen palabras distintas.' },
+              { Icon: Bell,   color: colors.yellow, bg: 'rgba(239,191,92,0.1)',   title: 'Alertas Inmediatas',      desc: 'Recibes un correo automático cuando detectamos una coincidencia mayor al 85%, sin tener que estar pendiente.' },
+            ].map(({ Icon, color, bg, title, desc }) => (
+              <div key={title} className="feature-card" style={{ borderTop: `4px solid ${color}` }}>
+                <div className="feature-card__icon" style={{ background: bg }}>
+                  <Icon size={24} color={color} />
                 </div>
-                <p style={{ fontSize: '0.85rem', color: '#718096', marginTop: '0.4rem', fontWeight: 500 }}>
-                  {stat.label}
-                </p>
+                <h3 className="feature-card__title">{title}</h3>
+                <p className="feature-card__desc">{desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── FEATURES ─── */}
-      <section style={{ background: '#FAFAFA', padding: '6rem 0' }}>
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-14">
-            <h2
-              style={{
-                fontSize: 'clamp(1.8rem, 4vw, 2.5rem)',
-                fontWeight: 800,
-                color: '#2D3748',
-                marginBottom: '0.75rem',
-              }}
-            >
-              Tecnología al servicio del reencuentro
-            </h2>
-            <div
-              style={{
-                width: '64px', height: '4px', borderRadius: '99px',
-                background: 'linear-gradient(90deg, #78B864, #78BBE6)',
-                margin: '0 auto 1rem',
-              }}
-            />
-            <p style={{ color: '#718096', fontSize: '1.05rem', maxWidth: '30rem', margin: '0 auto' }}>
-              Herramientas pensadas para quienes más las necesitan, en el momento en que más las necesitan.
-            </p>
+      {/* ── CARRUSEL "¿CÓMO FUNCIONA?" ── */}
+      <section className="home-how">
+        <div className="home-how__inner">
+          <h2 className="home-how__title">¿Cómo funciona?</h2>
+          <div style={gradientDivider} />
+
+          <div className="carousel">
+            <div className="carousel__content" key={step}>
+              <div className="carousel__icon-wrap" style={{ background: bg }}>
+                <StepIcon size={34} color={color} />
+              </div>
+              <div className="carousel__step-label" style={{ color }}>
+                Paso {step + 1} de {HOW_STEPS.length}
+              </div>
+              <h3 className="carousel__title">{title}</h3>
+              <p className="carousel__desc">{desc}</p>
+            </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {[
-              {
-                icon: (
-                  <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                ),
-                color: '#78B864',
-                bg: 'rgba(120,184,100,0.1)',
-                shadow: 'rgba(120,184,100,0.15)',
-                title: 'Georreferenciación',
-                desc: 'Marca exactamente dónde perdiste o encontraste a la mascota. El sistema monitorea automáticamente un radio de 5 km.',
-              },
-              {
-                icon: (
-                  <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <rect x="3" y="3" width="18" height="13" rx="2" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 21h6M12 17v4" />
-                    <circle cx="12" cy="10" r="2" />
-                  </svg>
-                ),
-                color: '#78BBE6',
-                bg: 'rgba(120,187,230,0.1)',
-                shadow: 'rgba(120,187,230,0.15)',
-                title: 'Inteligencia Artificial',
-                desc: 'Nuestra IA compara fotos y descripciones buscando similitudes, aunque los detalles del reporte varíen.',
-              },
-              {
-                icon: (
-                  <svg width="32" height="32" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                ),
-                color: '#EFBF5C',
-                bg: 'rgba(239,191,92,0.1)',
-                shadow: 'rgba(239,191,92,0.15)',
-                title: 'Alertas Inmediatas',
-                desc: 'Te avisamos por correo apenas detectemos una coincidencia mayor al 85%, sin que tengas que estar pendiente.',
-              },
-            ].map(card => (
-              <div
-                key={card.title}
-                style={{
-                  background: '#fff',
-                  borderRadius: '1.5rem',
-                  padding: '2.5rem 2rem',
-                  border: '1px solid #EFEFEF',
-                  boxShadow: `0 4px 24px ${card.shadow}`,
-                  transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-                  cursor: 'default',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'translateY(-6px)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = `0 16px 40px ${card.shadow}`;
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 24px ${card.shadow}`;
-                }}
-              >
-                <div
-                  style={{
-                    width: '64px', height: '64px', borderRadius: '1rem',
-                    background: card.bg, color: card.color,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: '1.5rem',
-                  }}
-                >
-                  {card.icon}
+          <div className="carousel__controls">
+            <button className="carousel__arrow" onClick={() => setStep(s => (s - 1 + HOW_STEPS.length) % HOW_STEPS.length)}>
+              <ChevronLeft size={17} />
+            </button>
+            {HOW_STEPS.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setStep(i)}
+                className={`carousel__dot ${i === step ? 'carousel__dot--active' : 'carousel__dot--inactive'}`}
+              />
+            ))}
+            <button className="carousel__arrow" onClick={() => setStep(s => (s + 1) % HOW_STEPS.length)}>
+              <ChevronRight size={17} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── MAPA DE COBERTURA ── */}
+      <section className="home-map">
+        <div className="home-map__inner">
+          <h2 className="section-title">Cobertura activa en la V Región</h2>
+          <p className="section-subtitle">
+            Las zonas fuera del área de cobertura aparecen oscurecidas temporalmente.
+          </p>
+
+          <div className="home-map__container">
+            <MapContainer
+              center={[-33.04, -71.52]}
+              zoom={11}
+              style={{ height: '100%', width: '100%' }}
+              scrollWheelZoom={false}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
+              <GeoJSON
+                data={inverseMask as any}
+                style={{ fillColor: '#1a2035', fillOpacity: 0.58, color: 'transparent', weight: 0 }}
+              />
+            </MapContainer>
+          </div>
+
+          <div className="home-map__cta">
+            <Link to="/mapa" className="home-map__cta-btn">
+              Explorar el mapa completo <MapPin size={15} />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOTOS MASCOTAS ── */}
+      <section className="home-pets">
+        <div className="home-pets__inner">
+          <h2 className="section-title">Cada mascota cuenta</h2>
+          <p className="section-subtitle">
+            Sabemos lo difícil que es. Estamos aquí para ayudarte a reencontrarte con quien más quieres.
+          </p>
+
+          <div className="home-pets__grid">
+            {PET_IMGS.map((img, i) => (
+              <div key={i} className="home-pets__img-wrap">
+                <img src={img.url} alt={img.alt} className="home-pets__img" loading="lazy" />
+                <div className="home-pets__overlay">
+                  <PawPrint size={30} color="white" />
+                  <span className="home-pets__overlay-text">
+                    ¿La conoces?<br />Ayúdanos a encontrarla
+                  </span>
                 </div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#2D3748', marginBottom: '0.75rem' }}>
-                  {card.title}
-                </h3>
-                <p style={{ color: '#4A5568', lineHeight: 1.7, fontSize: '0.95rem' }}>
-                  {card.desc}
-                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── CTA ─── */}
-      <section style={{ padding: '5rem 1.5rem' }}>
-        <div
-          style={{
-            maxWidth: '1100px',
-            margin: '0 auto',
-            borderRadius: '2rem',
-            background: 'linear-gradient(135deg, #2D3748 0%, #3D4E6A 100%)',
-            padding: '4rem 3rem',
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '2.5rem',
-            position: 'relative',
-            overflow: 'hidden',
-            boxShadow: '0 30px 80px rgba(45,55,72,0.3)',
-          }}
-        >
-          {/* Blobs CTA */}
-          <div style={{ position: 'absolute', top: '-60px', right: '-60px', width: '280px', height: '280px', borderRadius: '50%', background: 'rgba(120,184,100,0.18)', filter: 'blur(60px)', pointerEvents: 'none' }} />
-          <div style={{ position: 'absolute', bottom: '-60px', left: '-40px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(120,187,230,0.18)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+      {/* ── FOOTER ── */}
+      <footer className="home-footer">
+        <div className="home-footer__inner">
+          <div className="home-footer__top">
 
-          <div style={{ position: 'relative', zIndex: 1, maxWidth: '580px' }}>
-            <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: 800, color: '#fff', lineHeight: 1.2, marginBottom: '1rem' }}>
-              Actúa rápido,{' '}
-              <span style={{ color: '#EFBF5C' }}>crea tu reporte ahora.</span>
-            </h2>
-            <p style={{ color: '#CBD5E0', fontSize: '1.05rem', lineHeight: 1.7 }}>
-              Puedes continuar como invitado si estás con prisa, o crear una cuenta gratuita para gestionar tus alertas.
-            </p>
+            <div>
+              <div className="home-footer__brand-name">GeoPatitas</div>
+              <p className="home-footer__brand-desc">
+                Plataforma de geolocalización para mascotas perdidas en la V Región, Chile.
+              </p>
+            </div>
+
+            <div>
+              <div className="home-footer__nav-heading">Navegación</div>
+              <div className="home-footer__nav-links">
+                {[
+                  { to: '/',         label: 'Inicio'         },
+                  { to: '/mapa',     label: 'Mapa'           },
+                  { to: '/reportar', label: 'Reportar'       },
+                  { to: '/login',    label: 'Iniciar Sesión' },
+                  { to: '/register', label: 'Registrarse'    },
+                ].map(({ to, label }) => (
+                  <Link key={to} to={to} className="home-footer__nav-link">{label}</Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="home-footer__duoc">
+              <div className="home-footer__duoc-badge">DuocUC</div>
+              <p className="home-footer__duoc-text">Proyecto Educativo</p>
+              <p className="home-footer__duoc-subtext">TPY1101 · DuocUC 2026</p>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', zIndex: 1 }}>
-            <Link
-              to="/register"
-              style={{
-                background: '#78B864',
-                color: '#fff',
-                fontWeight: 700,
-                padding: '1rem 2.5rem',
-                borderRadius: '0.875rem',
-                fontSize: '1.05rem',
-                textDecoration: 'none',
-                textAlign: 'center',
-                transition: 'all 0.3s ease',
-                boxShadow: '0 6px 20px rgba(120,184,100,0.4)',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#68A554'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#78B864'; (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; }}
-            >
-              Crear Cuenta Gratis
-            </Link>
-            <Link
-              to="/login"
-              style={{
-                background: 'transparent',
-                color: '#fff',
-                fontWeight: 600,
-                padding: '1rem 2.5rem',
-                borderRadius: '0.875rem',
-                fontSize: '1.05rem',
-                textDecoration: 'none',
-                textAlign: 'center',
-                border: '1.5px solid rgba(255,255,255,0.3)',
-                transition: 'all 0.3s ease',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.6)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.3)'; }}
-            >
-              Ya tengo cuenta
-            </Link>
+          <div className="home-footer__bottom">
+            <p className="home-footer__credits">
+              Creado por <strong>Simón Villar</strong> y <strong>Carlos Muñoz</strong>
+            </p>
+            <p className="home-footer__copy">© 2026 GeoPatitas</p>
           </div>
         </div>
-      </section>
+      </footer>
 
     </div>
   );
