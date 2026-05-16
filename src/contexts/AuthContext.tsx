@@ -43,12 +43,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    // TODO: Implementar lógica de login con el backend
-    // const response = await api.post('/auth/login', { email, password });
-    // setUser(response.data.user);
-    // localStorage.setItem('token', response.data.token);
-    // localStorage.setItem('user', JSON.stringify(response.data.user));
-    console.log('Login:', email, password);
+    // ── Mock temporal para pruebas de frontend ──────────────────
+    if (email === 'admin@demo.com' && password === 'admin') {
+      const mockUser: User = {
+        id: 'mock-admin-001',
+        email: 'admin@demo.com',
+        name: 'Admin Demo',
+        createdAt: new Date(),
+      };
+      setUser(mockUser);
+      localStorage.setItem('user', JSON.stringify(mockUser));
+      localStorage.setItem('token', 'mock-token-dev-only');
+      return;
+    }
+    // ── TODO: reemplazar con llamada real al backend ─────────────
+    throw new Error('Credenciales incorrectas');
   };
 
   const logout = () => {

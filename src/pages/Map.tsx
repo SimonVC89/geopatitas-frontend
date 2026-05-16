@@ -1,99 +1,830 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import { Icon } from 'leaflet';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
+import {
+  MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, useMapEvents,
+} from 'react-leaflet';
+import { DivIcon } from 'leaflet';
+import { Joyride, STATUS, EVENTS, ACTIONS } from 'react-joyride';
+import type { EventData, Step } from 'react-joyride'; // Step se usa dentro del componente
 import 'leaflet/dist/leaflet.css';
+import { MapPin, SlidersHorizontal, Search, ChevronDown, Upload, CheckCircle, PawPrint } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import Footer from '../components/Footer';
+import './Map.css';
 
-// Fix para los iconos de Leaflet en React
-const defaultIcon = new Icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+// ─── Iconos ──────────────────────────────────────────────────────
+
+const pawIcon = new DivIcon({
+  html: '<div class="paw-marker-icon">🐾</div>',
+  className: '',
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
 });
 
-// Coordenadas por defecto: Valparaíso
-const DEFAULT_CENTER: [number, number] = [-33.0472, -71.6127];
-const DEFAULT_ZOOM = 12;
+const lupaIcon = new DivIcon({
+  html: '<div class="lupa-marker-icon">🔍</div>',
+  className: '',
+  iconSize: [36, 36],
+  iconAnchor: [18, 18],
+});
 
-export default function Map() {
-  // TODO: Cargar reportes reales desde el backend
-  const mockReports = [
-    {
-      id: '1',
-      type: 'lost',
-      position: [-33.0472, -71.6127] as [number, number],
-      petName: 'Max',
-      description: 'Perro labrador color dorado',
+const foundMarkerIcon = new DivIcon({
+  html: `<div class="status-marker status-marker--found"><div class="status-marker__circle">!</div><div class="status-marker__tip"></div></div>`,
+  className: '',
+  iconSize: [32, 44],
+  iconAnchor: [16, 44],
+});
+
+const lostMarkerIcon = new DivIcon({
+  html: `<div class="status-marker status-marker--lost"><div class="status-marker__circle">?</div><div class="status-marker__tip"></div></div>`,
+  className: '',
+  iconSize: [32, 44],
+  iconAnchor: [16, 44],
+});
+
+// ─── Constantes ──────────────────────────────────────────────────
+const DEFAULT_CENTER: [number, number] = [-33.04, -71.52];
+const DEFAULT_ZOOM = 11;
+
+// ─── Máscara inversa ─────────────────────────────────────────────
+const WORLD: [number, number][] = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
+const COVERAGE_ZONE: [number, number][] = [
+  [-71.720, -32.940],
+  [-71.555, -32.930],
+  [-71.430, -32.958],
+  [-71.375, -33.015],
+  [-71.375, -33.098],
+  [-71.445, -33.148],
+  [-71.720, -33.112],
+  [-71.720, -32.940],
+];
+const inverseMask = {
+  type: 'Feature' as const,
+  geometry: { type: 'Polygon' as const, coordinates: [WORLD, COVERAGE_ZONE] },
+  properties: {},
+};
+
+// ─── Datos mock ──────────────────────────────────────────────────
+const mockReports = [
+  { id: '1', type: 'lost'  as const, status: 'active'   as const, especie: 'Perro', color: 'Dorado',   tamano: 'Grande',  fecha: '14 mayo 2026', contacto: 'juan.perez@email.com',    position: [-33.0472, -71.6127] as [number,number], petName: 'Max',         description: 'Perro labrador color dorado, collar rojo. Muy cariñoso y obediente. Se escapó por la puerta trasera del jardín.' },
+  { id: '2', type: 'found' as const, status: 'resolved' as const, especie: 'Gato',  color: 'Atigrado', tamano: 'Pequeño', fecha: '13 mayo 2026', contacto: 'maria.garcia@email.com',  position: [-33.0372, -71.6227] as [number,number], petName: 'Desconocido', description: 'Gato atigrado encontrado en parque República. Lleva collar azul sin placa de identificación.' },
+  { id: '3', type: 'lost'  as const, status: 'active'   as const, especie: 'Perro', color: 'Blanco',   tamano: 'Pequeño', fecha: '15 mayo 2026', contacto: 'carolina.r@email.com',   position: [-33.0520, -71.5980] as [number,number], petName: 'Luna',         description: 'Perra blanca de raza bichón, muy asustadiza con extraños. Lleva collar rosado y chip de identificación.' },
+  { id: '4', type: 'found' as const, status: 'active'   as const, especie: 'Gato',  color: 'Naranja',  tamano: 'Pequeño', fecha: '15 mayo 2026', contacto: 'pedro.mora@email.com',   position: [-33.0430, -71.6050] as [number,number], petName: 'Desconocido', description: 'Gatito naranja sin collar encontrado frente al minimarket de calle Lynch. Muy amigable y curioso.' },
+  { id: '5', type: 'lost'  as const, status: 'resolved' as const, especie: 'Perro', color: 'Gris',     tamano: 'Mediano', fecha: '10 mayo 2026', contacto: 'ana.lagos@email.com',    position: [-33.0610, -71.6200] as [number,number], petName: 'Toby',         description: 'Schnauzer gris mediano. ¡Ya fue encontrado gracias a la comunidad! Muchas gracias a todos.' },
+];
+const mockMyReports = [
+  { id: 'm1', type: 'found' as const, status: 'active' as const, position: [-33.055, -71.61] as [number,number], petName: 'Desconocido', description: 'Perro blanco con mancha negra' },
+];
+
+// ─── Emoji por especie ───────────────────────────────────────────
+const especieEmoji = (e: string) =>
+  ({ Perro: '🐶', Gato: '🐱', Ave: '🐦', Conejo: '🐰' }[e] ?? '🐾');
+
+// ─── Haversine (km entre dos coordenadas) ────────────────────────
+const haversine = (a: [number,number], b: [number,number]): number => {
+  const R = 6371;
+  const dLat = (b[0] - a[0]) * Math.PI / 180;
+  const dLon = (b[1] - a[1]) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+};
+
+// ─── Opciones de filtros ─────────────────────────────────────────
+const ESPECIES = ['Todos', 'Perro', 'Gato', 'Ave', 'Conejo', 'Otro'];
+const FECHAS   = ['Cualquier fecha', 'Hoy', 'Esta semana', 'Este mes'];
+const TAMANOS  = ['Todos', 'Pequeño', 'Mediano', 'Grande'];
+const COLORES  = ['Todos', 'Blanco', 'Negro', 'Marrón', 'Amarillo', 'Gris', 'Naranja', 'Multicolor'];
+const ESTADOS  = ['Activo', 'Resuelto'];
+
+
+// ─── Title Case automático ───────────────────────────────────────
+const toTitleCase = (str: string) =>
+  str.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+// ─── MapClickHandler (debe estar dentro de MapContainer) ─────────
+function MapClickHandler({ active, onPlace }: { active: boolean; onPlace: (pos: [number,number]) => void }) {
+  useMapEvents({
+    click(e) {
+      if (active) onPlace([e.latlng.lat, e.latlng.lng]);
     },
+  });
+  return null;
+}
+
+// ─── Componente principal ────────────────────────────────────────
+export default function Map() {
+  const { isAuthenticated } = useAuth();
+  const navigate        = useNavigate();
+  const routerLocation  = useRouterLocation();
+
+  // Pasos Joyride según rol (definidos aquí para acceder a isAuthenticated)
+  const STEP_FORM = isAuthenticated ? 1 : 0;
+  const JOYRIDE_STEPS: Step[] = [
+    ...(isAuthenticated ? [{
+      target: '.sidebar-radius',
+      title: '📏 Radio de búsqueda',
+      content: 'Ajusta el área de búsqueda alrededor del punto que marcaste. Haz clic en Siguiente cuando estés listo.',
+      placement: 'right' as const,
+      skipBeacon: true,
+      blockTargetInteraction: false,
+      buttons: ['primary', 'skip'] as any,
+    }] : []),
     {
-      id: '2',
-      type: 'found',
-      position: [-33.0372, -71.6227] as [number, number],
-      petName: 'Desconocido',
-      description: 'Gato atigrado encontrado',
+      target: '.sidebar-report-form',
+      title: '📋 Datos del animal',
+      content: 'Completa los datos de la mascota. Sube una foto si puedes, ayuda mucho.',
+      placement: 'right' as const,
+      skipBeacon: true,
+      blockTargetInteraction: false,
+      buttons: [] as any,
     },
   ];
 
+  // Paw & radius
+  const [isPlacingPaw, setIsPlacingPaw] = useState(false);
+  const [pawPosition,  setPawPosition]  = useState<[number,number]|null>(null);
+  const [radius,       setRadius]       = useState(1);
+
+  // Filtros
+  const [filtersOpen,   setFiltersOpen]   = useState(false);
+  const [filterTipo,    setFilterTipo]    = useState<'all'|'lost'|'found'>('all');
+  const [filterEspecie, setFilterEspecie] = useState('Todos');
+  const [filterNombre,  setFilterNombre]  = useState('');
+  const [filterFecha,   setFilterFecha]   = useState('Cualquier fecha');
+  const [filterTamano,  setFilterTamano]  = useState('Todos');
+  const [filterColor,   setFilterColor]   = useState('Todos');
+  const [filterEstado,  setFilterEstado]  = useState('Activo');
+
+  // Mis reportes
+  const [showMyReports, setShowMyReports] = useState(false);
+  const [guestMessage,  setGuestMessage]  = useState(false);
+
+  // Modo exploración
+  const [exploreMode,      setExploreMode]      = useState(false);
+  const [filtersApplied,   setFiltersApplied]   = useState(false);
+
+  // Guías de sidebar
+  const [showExploreGuide, setShowExploreGuide] = useState(false);
+  const [showReportGuide,  setShowReportGuide]  = useState(false);
+
+  // Joyride & flujo de reporte
+  const [showGuestInfo,  setShowGuestInfo]  = useState(false);
+  const [joyrideRun,     setJoyrideRun]     = useState(false);
+  const [joyrideStep,    setJoyrideStep]    = useState(0);
+  const [reportFormOpen, setReportFormOpen] = useState(false);
+  const [reportForm,     setReportForm]     = useState({
+    tipo: 'found' as 'found' | 'lost',
+    nombreDesconocido: true,
+    nombre: '', especie: '', color: '', descripcion: '', foto: null as File|null, email: '',
+  });
+  const [reportSuccess,  setReportSuccess]  = useState(false);
+  const [selectedReport, setSelectedReport] = useState<(typeof mockReports)[number] | null>(null);
+
+  // Modo selector de ubicación (desde /reportar)
+  const [locationPickerMode,   setLocationPickerMode]   = useState(false);
+  const [showLocationConfirm,  setShowLocationConfirm]  = useState(false);
+
+  useEffect(() => {
+    const state = routerLocation.state as { pickingLocation?: boolean } | null;
+    if (state?.pickingLocation) {
+      setLocationPickerMode(true);
+      setIsPlacingPaw(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reportes para modo exploración (filtro completo + radio)
+  const filteredExplore = (exploreMode && filtersApplied && pawPosition)
+    ? mockReports.filter(r => {
+        if (filterTipo !== 'all' && r.type !== filterTipo) return false;
+        if (filterEspecie !== 'Todos' && r.especie !== filterEspecie) return false;
+        if (filterNombre && !r.petName.toLowerCase().includes(filterNombre.toLowerCase())) return false;
+        if (filterEstado === 'Activo'   && r.status !== 'active')   return false;
+        if (filterEstado === 'Resuelto' && r.status !== 'resolved') return false;
+        if (haversine(pawPosition, r.position) > radius) return false;
+        return true;
+      })
+    : [];
+
+  // ── Handlers ─────────────────────────────────────────────────
+  const handleFabClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setShowReportGuide(false);
+    setExploreMode(false);
+    setFiltersApplied(false);
+    setPawPosition(null);
+    setReportFormOpen(false);
+    setJoyrideRun(false);
+    setJoyrideStep(0);
+    if (!isAuthenticated) {
+      setShowGuestInfo(true); // modal custom — no Joyride
+    } else {
+      setIsPlacingPaw(true);  // registrado: directo al banner del mapa
+    }
+  };
+
+  const handleGuestInfoContinue = () => {
+    setShowGuestInfo(false);
+    setIsPlacingPaw(true);    // ahora sí activa el banner del mapa
+  };
+
+  const handleMapPlace = (pos: [number,number]) => {
+    setPawPosition(pos);
+    setIsPlacingPaw(false);
+    if (locationPickerMode) { setShowLocationConfirm(true); return; }
+    if (exploreMode) return;
+    setReportFormOpen(true);
+    setJoyrideStep(STEP_FORM);
+    setJoyrideRun(true);
+  };
+
+  const handleJoyrideCallback = (data: EventData) => {
+    const { status, type, action, index } = data;
+
+    if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
+      setJoyrideRun(false);
+      setReportFormOpen(false);
+      setIsPlacingPaw(false);
+      setJoyrideStep(0);
+      return;
+    }
+    if (type === EVENTS.STEP_AFTER && action === ACTIONS.NEXT) {
+      if (isAuthenticated && index === 0) setReportFormOpen(true); // radio → abre formulario
+      setJoyrideStep(index + 1);
+    }
+    if (type === EVENTS.STEP_AFTER && action === ACTIONS.PREV) {
+      if (isAuthenticated && index === STEP_FORM) setReportFormOpen(false);
+      setJoyrideStep(index - 1);
+    }
+  };
+
+  const handleReportSubmit = () => {
+    setJoyrideRun(false);
+    setReportFormOpen(false);
+    setJoyrideStep(0);
+    setReportSuccess(true);
+    setTimeout(() => setReportSuccess(false), 5000);
+  };
+
+  const handleCancelReport = () => {
+    setReportFormOpen(false);
+    setJoyrideRun(false);
+    setIsPlacingPaw(false);
+    setJoyrideStep(0);
+  };
+
+  // ── Render ───────────────────────────────────────────────────
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
-      {/* Header con filtros */}
-      <div className="bg-white shadow-md p-4">
-        <div className="container mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">
-            Mapa de Reportes
-          </h1>
-          <div className="flex gap-2">
-            <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
-              Filtrar Perdidos
-            </button>
-            <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors">
-              Filtrar Encontrados
-            </button>
+    <>
+      <Joyride
+        steps={JOYRIDE_STEPS}
+        run={joyrideRun}
+        stepIndex={joyrideStep}
+        continuous
+        scrollToFirstStep={false}
+        onEvent={handleJoyrideCallback}
+        options={{ primaryColor: '#78B864', zIndex: 10000 }}
+        locale={{ back: 'Atrás', close: 'Cerrar', last: 'Finalizar', next: 'Siguiente', skip: 'Cancelar' }}
+      />
+
+      {showGuestInfo && (
+        <div className="guest-info-overlay">
+          <div className="guest-info-card">
+            <div className="guest-info-icon">👤</div>
+            <h3 className="guest-info-title">Estás navegando como invitado</h3>
+            <p className="guest-info-body">
+              Como invitado solo puedes reportar mascotas <strong>encontradas</strong>.
+              Para reportar una mascota perdida, necesitas{' '}
+              <a href="/register" className="guest-info-link">registrarte</a>.
+            </p>
+            <div className="guest-info-actions">
+              <button className="guest-info-btn-primary" onClick={handleGuestInfoContinue}>
+                Entendido, continuar
+              </button>
+              <button className="guest-info-btn-cancel" onClick={() => setShowGuestInfo(false)}>
+                Cancelar
+              </button>
+            </div>
           </div>
+        </div>
+      )}
+
+      {showLocationConfirm && pawPosition && (
+        <div className="location-confirm-overlay">
+          <div className="location-confirm-card">
+            <div className="location-confirm-icon">📍</div>
+            <h3 className="location-confirm-title">¿Confirmas esta ubicación?</h3>
+            <p className="location-confirm-body">
+              El reporte quedará asociado al punto que marcaste en el mapa.
+            </p>
+            <div className="location-confirm-actions">
+              <button
+                className="location-confirm-btn-yes"
+                onClick={() => navigate('/reportar', { state: { lat: pawPosition[0], lng: pawPosition[1] } })}
+              >
+                Sí, es correcta
+              </button>
+              <button
+                className="location-confirm-btn-no"
+                onClick={() => { setShowLocationConfirm(false); setPawPosition(null); setIsPlacingPaw(true); }}
+              >
+                No, elegir otra
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExploreGuide && (
+        <div className="explore-guide-overlay" onClick={() => setShowExploreGuide(false)} />
+      )}
+
+      {showReportGuide && (
+        <>
+          <div className="report-guide-overlay" onClick={() => setShowReportGuide(false)} />
+          <div className="report-guide-paw">🐾</div>
+        </>
+      )}
+
+      {selectedReport && (
+        <div className="report-detail-overlay" onClick={() => setSelectedReport(null)}>
+          <div className="report-detail-card" onClick={e => e.stopPropagation()}>
+
+            {/* Foto / placeholder */}
+            <div
+              className="report-detail-photo"
+              style={{ background: selectedReport.type === 'found' ? '#EBF4FF' : '#FFFFF0' }}
+            >
+              <span className="report-detail-photo__emoji">{especieEmoji(selectedReport.especie)}</span>
+            </div>
+
+            {/* Cabecera con badges y cierre */}
+            <div className="report-detail-header">
+              <div className="report-detail-badges">
+                <span className={`report-detail-badge report-detail-badge--${selectedReport.type}`}>
+                  {selectedReport.type === 'found' ? '! Encontrado' : '? Perdido'}
+                </span>
+                <span className={`report-detail-badge report-detail-badge--${selectedReport.status}`}>
+                  {selectedReport.status === 'active' ? '⚠ Activo' : '✓ Resuelto'}
+                </span>
+              </div>
+              <button className="report-detail-close" onClick={() => setSelectedReport(null)}>✕</button>
+            </div>
+
+            <div className="report-detail-body">
+              <h2 className="report-detail-name">{selectedReport.petName}</h2>
+
+              <div className="report-detail-grid">
+                <div className="report-detail-field">
+                  <span className="report-detail-field__label">Especie</span>
+                  <span className="report-detail-field__value">{selectedReport.especie}</span>
+                </div>
+                <div className="report-detail-field">
+                  <span className="report-detail-field__label">Color</span>
+                  <span className="report-detail-field__value">{selectedReport.color}</span>
+                </div>
+                <div className="report-detail-field">
+                  <span className="report-detail-field__label">Tamaño</span>
+                  <span className="report-detail-field__value">{selectedReport.tamano}</span>
+                </div>
+                <div className="report-detail-field">
+                  <span className="report-detail-field__label">Fecha reporte</span>
+                  <span className="report-detail-field__value">{selectedReport.fecha}</span>
+                </div>
+              </div>
+
+              <div className="report-detail-desc">{selectedReport.description}</div>
+
+              <a
+                href={`mailto:${selectedReport.contacto}`}
+                className="report-detail-contact"
+                onClick={e => e.stopPropagation()}
+              >
+                <span className="report-detail-contact__icon">✉</span>
+                <div>
+                  <div className="report-detail-contact__label">Contactar al reportante</div>
+                  <div className="report-detail-contact__email">{selectedReport.contacto}</div>
+                </div>
+              </a>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {reportSuccess && (
+        <div className="report-success-toast">
+          <CheckCircle size={18} />
+          ¡Reporte enviado! Te avisaremos si encontramos una coincidencia.
+        </div>
+      )}
+
+      <div className={`map-page${isPlacingPaw ? ' placing-paw' : ''}`}>
+
+        {/* ── HEADER ── */}
+        <div className="map-header">
+          <h1 className="map-header__title">Mapa de Reportes</h1>
+        </div>
+
+        {/* ── LAYOUT ── */}
+        <div className="map-layout">
+
+          {/* ── SIDEBAR ── */}
+          <aside className={`map-sidebar${showExploreGuide ? ' map-sidebar--guide' : ''}`}>
+
+            {reportFormOpen ? (
+
+              /* MODO FORMULARIO */
+              <div className="sidebar-report-form">
+                <div className="sidebar-form-title">
+                  <span>🐾</span> Nuevo reporte
+                </div>
+
+                {isAuthenticated && (
+                  <div className="sidebar-field">
+                    <label className="sidebar-label">Tipo de reporte</label>
+                    <div className="sidebar-type-toggle">
+                      <button
+                        className={`sidebar-type-btn${reportForm.tipo === 'found' ? ' sidebar-type-btn--active-green' : ''}`}
+                        onClick={() => setReportForm(f => ({ ...f, tipo: 'found', nombreDesconocido: true, nombre: '' }))}
+                        type="button"
+                      >
+                        ✅ Encontrado
+                      </button>
+                      <button
+                        className={`sidebar-type-btn${reportForm.tipo === 'lost' ? ' sidebar-type-btn--active-yellow' : ''}`}
+                        onClick={() => setReportForm(f => ({ ...f, tipo: 'lost', nombreDesconocido: false }))}
+                        type="button"
+                      >
+                        🔍 Perdido
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {reportForm.tipo === 'found' ? (
+                  <div className="sidebar-field">
+                    <label className="sidebar-unknown-name">
+                      <input
+                        type="checkbox"
+                        checked={reportForm.nombreDesconocido}
+                        onChange={e => setReportForm(f => ({
+                          ...f,
+                          nombreDesconocido: e.target.checked,
+                          nombre: e.target.checked ? '' : f.nombre,
+                        }))}
+                      />
+                      <span>No sé el nombre de esta mascota</span>
+                    </label>
+                    {!reportForm.nombreDesconocido && (
+                      <div className="sidebar-name-reveal">
+                        <label className="sidebar-label">Nombre de la mascota</label>
+                        <input
+                          type="text"
+                          className="sidebar-input"
+                          placeholder="ej: aparece en su placa o collar"
+                          value={reportForm.nombre}
+                          onChange={e => setReportForm(f => ({ ...f, nombre: toTitleCase(e.target.value) }))}
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="sidebar-field">
+                    <label className="sidebar-label">Nombre de la mascota</label>
+                    <input
+                      type="text"
+                      className="sidebar-input"
+                      placeholder="ej: Sara Connor"
+                      value={reportForm.nombre}
+                      onChange={e => setReportForm(f => ({ ...f, nombre: toTitleCase(e.target.value) }))}
+                    />
+                  </div>
+                )}
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">Especie</label>
+                  <select className="sidebar-select" value={reportForm.especie} onChange={e => setReportForm(f => ({ ...f, especie: e.target.value }))}>
+                    <option value="">Selecciona...</option>
+                    {ESPECIES.filter(x => x !== 'Todos').map(x => <option key={x}>{x}</option>)}
+                  </select>
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">Color principal</label>
+                  <select className="sidebar-select" value={reportForm.color} onChange={e => setReportForm(f => ({ ...f, color: e.target.value }))}>
+                    <option value="">Selecciona...</option>
+                    {COLORES.filter(x => x !== 'Todos').map(x => <option key={x}>{x}</option>)}
+                  </select>
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">Descripción breve</label>
+                  <textarea
+                    className="sidebar-textarea"
+                    rows={3}
+                    placeholder="Collar, rasgos especiales, comportamiento..."
+                    value={reportForm.descripcion}
+                    onChange={e => setReportForm(f => ({ ...f, descripcion: e.target.value }))}
+                  />
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">Foto del animal</label>
+                  <label className="sidebar-upload">
+                    <Upload size={15} />
+                    <span>{reportForm.foto ? reportForm.foto.name : 'Subir foto...'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => setReportForm(f => ({ ...f, foto: e.target.files?.[0] ?? null }))}
+                    />
+                  </label>
+                </div>
+
+                {!isAuthenticated && (
+                  <div className="sidebar-field report-email">
+                    <label className="sidebar-label">Tu email de contacto</label>
+                    <input
+                      type="email"
+                      className="sidebar-input"
+                      placeholder="tucorreo@email.com"
+                      value={reportForm.email}
+                      onChange={e => setReportForm(f => ({ ...f, email: e.target.value }))}
+                    />
+                  </div>
+                )}
+
+                <button className="sidebar-submit-btn" onClick={handleReportSubmit}>
+                  ✓ Enviar reporte
+                </button>
+                <button className="sidebar-cancel-btn" onClick={handleCancelReport}>
+                  Cancelar
+                </button>
+              </div>
+
+            ) : (
+
+              /* SIDEBAR NORMAL */
+              <div className="sidebar-sections">
+
+                {/* Card 1 — Explorar zona */}
+                <div
+                  className="sidebar-intro sidebar-intro--explore"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { setExploreMode(true); setFiltersApplied(false); setShowExploreGuide(true); }}
+                  onKeyDown={e => e.key === 'Enter' && (setExploreMode(true), setFiltersApplied(false), setShowExploreGuide(true))}
+                >
+                  <div className="sidebar-intro__header">
+                    <MapPin size={14} color="#78B864" />
+                    <p className="sidebar-intro__title">Explora tu zona</p>
+                  </div>
+                  <p className="sidebar-intro__text">
+                    Ubícate en el mapa para ver los casos activos de búsqueda y perdidos dentro de tu sector.
+                  </p>
+                </div>
+
+                {/* Card 2 — Crear reporte */}
+                <div
+                  className="sidebar-intro sidebar-intro--report"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setShowReportGuide(true)}
+                  onKeyDown={e => e.key === 'Enter' && setShowReportGuide(true)}
+                >
+                  <div className="sidebar-intro__header">
+                    <PawPrint size={14} color="#D4A843" />
+                    <p className="sidebar-intro__title sidebar-intro__title--yellow">¿Quieres crear un reporte?</p>
+                  </div>
+                  <p className="sidebar-intro__text sidebar-intro__text--yellow">
+                    Reporta una mascota perdida o encontrada y ayuda a reunir familias.
+                  </p>
+                </div>
+
+                {/* 1. Ubícame */}
+                <div className={`sidebar-section${showExploreGuide ? ' sidebar-section--lit' : ''}`}>
+                  <button
+                    className={`sidebar-btn sidebar-btn--primary${isPlacingPaw ? ' sidebar-btn--active' : ''}`}
+                    onClick={() => { setShowExploreGuide(false); if (!joyrideRun) setIsPlacingPaw(v => !v); }}
+                  >
+                    <MapPin size={15} />
+                    Ubícame en el mapa
+                  </button>
+                  {pawPosition && !isPlacingPaw && (
+                    <p className="sidebar-hint">📍 Posición establecida</p>
+                  )}
+                </div>
+
+                {/* 2. Radio */}
+                <div className={`sidebar-section sidebar-radius${!pawPosition ? ' sidebar-section--disabled' : ''}${showExploreGuide ? ' sidebar-section--lit' : ''}`}>
+                  <div className="sidebar-radius-header">
+                    <SlidersHorizontal size={13} color="#718096" />
+                    <span>Radio de búsqueda</span>
+                    <span className="sidebar-radius-value">{radius.toFixed(1)} km</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1} max={10} step={0.1}
+                    value={radius}
+                    disabled={!pawPosition}
+                    onChange={e => setRadius(Number(e.target.value))}
+                    className="sidebar-slider"
+                  />
+                </div>
+
+                {/* 3. Filtros */}
+                <div className={`sidebar-section${showExploreGuide ? ' sidebar-section--lit' : ''}`}>
+                  <button className="sidebar-section-toggle" onClick={() => setFiltersOpen(o => !o)}>
+                    <div className="sidebar-toggle-label">
+                      <SlidersHorizontal size={13} color="#718096" />
+                      <span>Filtros</span>
+                    </div>
+                    <ChevronDown
+                      size={13}
+                      style={{ transition: 'transform 0.2s', transform: filtersOpen ? 'rotate(180deg)' : 'none' }}
+                    />
+                  </button>
+
+                  {filtersOpen && (
+                    <div className="sidebar-filters">
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Tipo</label>
+                        <select className="sidebar-select" value={filterTipo} onChange={e => setFilterTipo(e.target.value as 'all'|'lost'|'found')}>
+                          <option value="all">Todos</option>
+                          <option value="lost">Perdido</option>
+                          <option value="found">Encontrado</option>
+                        </select>
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Especie</label>
+                        <select className="sidebar-select" value={filterEspecie} onChange={e => setFilterEspecie(e.target.value)}>
+                          {ESPECIES.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Nombre de mascota</label>
+                        <input
+                          type="text"
+                          className="sidebar-input"
+                          placeholder="ej: Sara Connor"
+                          value={filterNombre}
+                          onChange={e => setFilterNombre(toTitleCase(e.target.value))}
+                        />
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Fecha</label>
+                        <select className="sidebar-select" value={filterFecha} onChange={e => setFilterFecha(e.target.value)}>
+                          {FECHAS.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Tamaño</label>
+                        <select className="sidebar-select" value={filterTamano} onChange={e => setFilterTamano(e.target.value)}>
+                          {TAMANOS.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Color</label>
+                        <select className="sidebar-select" value={filterColor} onChange={e => setFilterColor(e.target.value)}>
+                          {COLORES.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                      </div>
+                      <div className="sidebar-field">
+                        <label className="sidebar-label">Estado</label>
+                        <select className="sidebar-select" value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+                          {ESTADOS.map(x => <option key={x}>{x}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3b. Buscar en zona (solo en modo exploración con patita colocada) */}
+                {exploreMode && pawPosition && (
+                  <div className="sidebar-section sidebar-section--search">
+                    <button
+                      className="sidebar-apply-btn"
+                      onClick={() => setFiltersApplied(true)}
+                    >
+                      <Search size={15} />
+                      {filtersApplied ? 'Actualizar resultados' : 'Buscar en esta zona'}
+                    </button>
+                    {filtersApplied && (
+                      <p className="sidebar-hint">
+                        {filteredExplore.length === 0
+                          ? 'Sin resultados con estos filtros'
+                          : `${filteredExplore.length} reporte${filteredExplore.length !== 1 ? 's' : ''} encontrado${filteredExplore.length !== 1 ? 's' : ''}`}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. Mis reportes */}
+                <div className="sidebar-section">
+                  {isAuthenticated ? (
+                    <button
+                      className={`sidebar-btn${showMyReports ? ' sidebar-btn--active' : ''}`}
+                      onClick={() => setShowMyReports(v => !v)}
+                    >
+                      <Search size={15} />
+                      {showMyReports ? 'Ocultar mis reportes' : 'Mis reportes'}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="sidebar-btn sidebar-btn--ghost"
+                        onClick={() => setGuestMessage(v => !v)}
+                      >
+                        <Search size={15} />
+                        Mis reportes
+                      </button>
+                      {guestMessage && (
+                        <p className="sidebar-guest-msg">
+                          <a href="/login" className="sidebar-guest-link">Inicia sesión</a> para ver tus reportes anteriores en el mapa.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </aside>
+
+          {/* ── MAPA ── */}
+          <div className="map-container-wrap">
+
+            {isPlacingPaw && (
+              <div className="map-placing-hint">
+                <span className="map-placing-hint__icon">
+                  {locationPickerMode ? '📍' : exploreMode ? '🔍' : '🐾'}
+                </span>
+                <span className="map-placing-hint__text">
+                  {locationPickerMode
+                    ? 'Haz clic en el mapa para marcar el lugar donde se vio la mascota'
+                    : exploreMode
+                    ? 'Haz clic en el mapa para elegir el centro de la zona que quieres explorar'
+                    : 'Haz clic en el mapa para marcar la posición donde quieres generar tu reporte'}
+                </span>
+              </div>
+            )}
+
+            <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} className="map-leaflet">
+              <MapClickHandler active={isPlacingPaw} onPlace={handleMapPlace} />
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <GeoJSON
+                data={inverseMask as any}
+                style={{ fillColor: '#1a2035', fillOpacity: 0.58, color: 'transparent', weight: 0 }}
+              />
+
+              {pawPosition && (
+                <>
+                  <Marker position={pawPosition} icon={pawIcon} />
+                  <Circle
+                    center={pawPosition}
+                    radius={radius * 1000}
+                    pathOptions={{ color: '#78B864', fillColor: '#78B864', fillOpacity: 0.12, weight: 2 }}
+                  />
+                </>
+              )}
+
+              {filtersApplied && filteredExplore.map(r => (
+                <Marker
+                  key={r.id}
+                  position={r.position}
+                  icon={r.type === 'found' ? foundMarkerIcon : lostMarkerIcon}
+                  eventHandlers={{ click: () => setSelectedReport(r) }}
+                />
+              ))}
+
+              {showMyReports && mockMyReports.map(r => (
+                <Marker key={r.id} position={r.position} icon={lupaIcon}>
+                  <Popup>
+                    <div className="map-popup">
+                      <span className="map-popup__badge">✅ Encontrado — <strong>Tu reporte</strong></span>
+                      <p className="map-popup__name">{r.petName}</p>
+                      <p className="map-popup__desc">{r.description}</p>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+
+            <a href="#" className={`map-fab${showReportGuide ? ' map-fab--glow' : ''}`} onClick={handleFabClick}>
+              + Reportar
+            </a>
+          </div>
+
         </div>
       </div>
 
-      {/* Map */}
-      <div className="flex-1 relative">
-        <MapContainer
-          center={DEFAULT_CENTER}
-          zoom={DEFAULT_ZOOM}
-          className="h-full w-full"
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-
-          {/* Marcadores de reportes */}
-          {mockReports.map((report) => (
-            <Marker
-              key={report.id}
-              position={report.position}
-              icon={defaultIcon}
-            >
-              <Popup>
-                <div className="p-2">
-                  <h3 className="font-bold text-lg mb-1">
-                    {report.type === 'lost' ? '🔍 Perdido' : '✅ Encontrado'}
-                  </h3>
-                  <p className="font-semibold">{report.petName}</p>
-                  <p className="text-sm text-gray-600">{report.description}</p>
-                  <button className="mt-2 bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
-                    Ver detalles
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
-
-        {/* Floating Action Button - Crear Reporte */}
-        <button className="absolute bottom-8 right-8 bg-yellow-500 hover:bg-yellow-600 text-white p-4 rounded-full shadow-lg text-2xl z-[1000] transition-colors">
-          + Reportar
-        </button>
-      </div>
-    </div>
+      <Footer />
+    </>
   );
 }

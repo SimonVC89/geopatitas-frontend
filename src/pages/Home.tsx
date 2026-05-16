@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { colors, gradientDivider } from '../styles/theme';
 import logo from '../assets/Logo Geopatitas.png';
+import Footer from '../components/Footer';
 import './Home.css';
 
 // ─── Pasos del carrusel ──────────────────────────────────────────
@@ -262,48 +263,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer className="home-footer">
-        <div className="home-footer__inner">
-          <div className="home-footer__top">
-
-            <div>
-              <div className="home-footer__brand-name">GeoPatitas</div>
-              <p className="home-footer__brand-desc">
-                Plataforma de geolocalización para mascotas perdidas en la V Región, Chile.
-              </p>
-            </div>
-
-            <div>
-              <div className="home-footer__nav-heading">Navegación</div>
-              <div className="home-footer__nav-links">
-                {[
-                  { to: '/',         label: 'Inicio'         },
-                  { to: '/mapa',     label: 'Mapa'           },
-                  { to: '/reportar', label: 'Reportar'       },
-                  { to: '/login',    label: 'Iniciar Sesión' },
-                  { to: '/register', label: 'Registrarse'    },
-                ].map(({ to, label }) => (
-                  <Link key={to} to={to} className="home-footer__nav-link">{label}</Link>
-                ))}
-              </div>
-            </div>
-
-            <div className="home-footer__duoc">
-              <div className="home-footer__duoc-badge">DuocUC</div>
-              <p className="home-footer__duoc-text">Proyecto Educativo</p>
-              <p className="home-footer__duoc-subtext">TPY1101 · DuocUC 2026</p>
-            </div>
-          </div>
-
-          <div className="home-footer__bottom">
-            <p className="home-footer__credits">
-              Creado por <strong>Simón Villar</strong> y <strong>Carlos Muñoz</strong>
-            </p>
-            <p className="home-footer__copy">© 2026 GeoPatitas</p>
-          </div>
-        </div>
-      </footer>
+      <Footer />
 
     </div>
   );
