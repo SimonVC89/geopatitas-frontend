@@ -9,6 +9,7 @@ import type { EventData, Step } from 'react-joyride'; // Step se usa dentro del 
 import 'leaflet/dist/leaflet.css';
 import { MapPin, SlidersHorizontal, Search, ChevronDown, Upload, CheckCircle, PawPrint } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../services/api';
 import Footer from '../components/Footer';
 import './Map.css';
 
@@ -64,14 +65,6 @@ const inverseMask = {
   properties: {},
 };
 
-// ─── Datos mock ──────────────────────────────────────────────────
-const mockReports = [
-  { id: '1', type: 'lost'  as const, status: 'active'   as const, especie: 'Perro', color: 'Dorado',   tamano: 'Grande',  fecha: '14 mayo 2026', contacto: 'juan.perez@email.com',    position: [-33.0472, -71.6127] as [number,number], petName: 'Max',         description: 'Perro labrador color dorado, collar rojo. Muy cariñoso y obediente. Se escapó por la puerta trasera del jardín.' },
-  { id: '2', type: 'found' as const, status: 'resolved' as const, especie: 'Gato',  color: 'Atigrado', tamano: 'Pequeño', fecha: '13 mayo 2026', contacto: 'maria.garcia@email.com',  position: [-33.0372, -71.6227] as [number,number], petName: 'Desconocido', description: 'Gato atigrado encontrado en parque República. Lleva collar azul sin placa de identificación.' },
-  { id: '3', type: 'lost'  as const, status: 'active'   as const, especie: 'Perro', color: 'Blanco',   tamano: 'Pequeño', fecha: '15 mayo 2026', contacto: 'carolina.r@email.com',   position: [-33.0520, -71.5980] as [number,number], petName: 'Luna',         description: 'Perra blanca de raza bichón, muy asustadiza con extraños. Lleva collar rosado y chip de identificación.' },
-  { id: '4', type: 'found' as const, status: 'active'   as const, especie: 'Gato',  color: 'Naranja',  tamano: 'Pequeño', fecha: '15 mayo 2026', contacto: 'pedro.mora@email.com',   position: [-33.0430, -71.6050] as [number,number], petName: 'Desconocido', description: 'Gatito naranja sin collar encontrado frente al minimarket de calle Lynch. Muy amigable y curioso.' },
-  { id: '5', type: 'lost'  as const, status: 'resolved' as const, especie: 'Perro', color: 'Gris',     tamano: 'Mediano', fecha: '10 mayo 2026', contacto: 'ana.lagos@email.com',    position: [-33.0610, -71.6200] as [number,number], petName: 'Toby',         description: 'Schnauzer gris mediano. ¡Ya fue encontrado gracias a la comunidad! Muchas gracias a todos.' },
-];
 const mockMyReports = [
   { id: 'm1', type: 'found' as const, status: 'active' as const, position: [-33.055, -71.61] as [number,number], petName: 'Desconocido', description: 'Perro blanco con mancha negra' },
 ];
@@ -80,15 +73,46 @@ const mockMyReports = [
 const especieEmoji = (e: string) =>
   ({ Perro: '🐶', Gato: '🐱', Ave: '🐦', Conejo: '🐰' }[e] ?? '🐾');
 
-// ─── Haversine (km entre dos coordenadas) ────────────────────────
-const haversine = (a: [number,number], b: [number,number]): number => {
-  const R = 6371;
-  const dLat = (b[0] - a[0]) * Math.PI / 180;
-  const dLon = (b[1] - a[1]) * Math.PI / 180;
-  const s = Math.sin(dLat / 2) ** 2
-    + Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+// ─── Tipo de display normalizado ─────────────────────────────────
+type ReportDisplay = {
+  id: string;
+  type: 'found' | 'lost';
+  status: 'active' | 'resolved';
+  especie: string;
+  color: string;
+  tamano: string;
+  fecha: string;
+  contactoName: string;
+  contacto: string;
+  contactoPhone: string;
+  position: [number, number];
+  petName: string;
+  description: string;
+  fotos: string[];
 };
+
+const normalizeWord = (s: string) =>
+  s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+
+const normalizeApiPet = (r: any): ReportDisplay => ({
+  id: String(r.id),
+  type: r.tipoReporte === 'ENCONTRADO' ? 'found' : 'lost',
+  status: r.estado === 'ACTIVO' ? 'active' : 'resolved',
+  especie: r.especie ? normalizeWord(r.especie) : 'Desconocido',
+  color: r.color ? normalizeWord(r.color) : 'Desconocido',
+  tamano: r.tamano ? normalizeWord(r.tamano) : 'Desconocido',
+  fecha: r.fechaReporte
+    ? new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
+        .format(new Date(r.fechaReporte))
+    : 'Sin fecha',
+  contactoName: r.contactoNombre ?? r.user?.nombre ?? '',
+  contacto: r.contactoEmail ?? r.user?.email ?? '',
+  contactoPhone: r.contactoTelefono ?? r.user?.telefono ?? '',
+  position: [r.latitud, r.longitud],
+  petName: r.nombre || 'Desconocido',
+  description: r.descripcion ?? '',
+  fotos: r.fotos ?? [],
+});
 
 // ─── Opciones de filtros ─────────────────────────────────────────
 const ESPECIES = ['Todos', 'Perro', 'Gato', 'Ave', 'Conejo', 'Otro'];
@@ -178,8 +202,10 @@ export default function Map() {
     nombreDesconocido: true,
     nombre: '', especie: '', color: '', descripcion: '', foto: null as File|null, email: '',
   });
-  const [reportSuccess,  setReportSuccess]  = useState(false);
-  const [selectedReport, setSelectedReport] = useState<(typeof mockReports)[number] | null>(null);
+  const [reportSuccess,     setReportSuccess]     = useState(false);
+  const [submittingReport,  setSubmittingReport]  = useState(false);
+  const [selectedReport, setSelectedReport] = useState<ReportDisplay | null>(null);
+  const [lightboxSrc,   setLightboxSrc]   = useState<string | null>(null);
 
   // Modo selector de ubicación (desde /reportar)
   const [locationPickerMode,   setLocationPickerMode]   = useState(false);
@@ -193,17 +219,16 @@ export default function Map() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reportes para modo exploración (filtro completo + radio)
-  const filteredExplore = (exploreMode && filtersApplied && pawPosition)
-    ? mockReports.filter(r => {
-        if (filterTipo !== 'all' && r.type !== filterTipo) return false;
-        if (filterEspecie !== 'Todos' && r.especie !== filterEspecie) return false;
-        if (filterNombre && !r.petName.toLowerCase().includes(filterNombre.toLowerCase())) return false;
-        if (filterEstado === 'Activo'   && r.status !== 'active')   return false;
-        if (filterEstado === 'Resuelto' && r.status !== 'resolved') return false;
-        if (haversine(pawPosition, r.position) > radius) return false;
-        return true;
-      })
+  // Reportes reales desde la API (el backend ya filtra por radio y demás parámetros)
+  const [apiReports,    setApiReports]    = useState<ReportDisplay[]>([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [searchError,   setSearchError]   = useState<string | null>(null);
+
+  // Solo filtra por nombre en cliente (el resto va al backend)
+  const filteredExplore = (exploreMode && filtersApplied)
+    ? apiReports.filter(r =>
+        !filterNombre || r.petName.toLowerCase().includes(filterNombre.toLowerCase())
+      )
     : [];
 
   // ── Handlers ─────────────────────────────────────────────────
@@ -258,19 +283,92 @@ export default function Map() {
     }
   };
 
-  const handleReportSubmit = () => {
-    setJoyrideRun(false);
-    setReportFormOpen(false);
-    setJoyrideStep(0);
-    setReportSuccess(true);
-    setTimeout(() => setReportSuccess(false), 5000);
-  };
-
   const handleCancelReport = () => {
     setReportFormOpen(false);
     setJoyrideRun(false);
     setIsPlacingPaw(false);
     setJoyrideStep(0);
+  };
+
+  const handleSearch = async () => {
+    if (!pawPosition) return;
+    setLoadingSearch(true);
+    setSearchError(null);
+    try {
+      const params: Record<string, string | number> = {
+        lat: pawPosition[0],
+        lng: pawPosition[1],
+        radius: Math.round(radius * 1000),
+      };
+      if (filterTipo !== 'all')       params.tipoReporte = filterTipo === 'found' ? 'ENCONTRADO' : 'PERDIDO';
+      if (filterEspecie !== 'Todos')  params.especie     = filterEspecie;
+      if (filterEstado === 'Activo')  params.estado      = 'ACTIVO';
+      if (filterEstado === 'Resuelto') params.estado     = 'RESUELTO';
+      if (filterColor !== 'Todos')    params.color       = filterColor;
+      if (filterTamano !== 'Todos')   params.tamano      = filterTamano;
+
+      const { data } = await api.get('/pets/nearby', { params });
+      setApiReports((data as any[]).map(normalizeApiPet));
+      setFiltersApplied(true);
+    } catch {
+      setSearchError('No se pudo conectar con el servidor. Intenta nuevamente.');
+      setApiReports([]);
+      setFiltersApplied(true);
+    } finally {
+      setLoadingSearch(false);
+    }
+  };
+
+  const handleReportSubmit = async () => {
+    if (!reportForm.especie) { alert('Por favor selecciona la especie.'); return; }
+    if (!reportForm.descripcion.trim()) { alert('Por favor agrega una descripción.'); return; }
+    if (!isAuthenticated && !reportForm.email.trim()) { alert('Por favor ingresa tu email de contacto.'); return; }
+
+    setSubmittingReport(true);
+    try {
+      let fotosUrls: string[] = [];
+      if (reportForm.foto && isAuthenticated) {
+        try {
+          const fd = new FormData();
+          fd.append('file', reportForm.foto);
+          const { data: up } = await api.post('/pets/upload-image', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          if (up?.url) fotosUrls = [up.url];
+        } catch { /* continúa sin foto si falla el upload */ }
+      }
+
+      const base = {
+        tipoReporte: (isAuthenticated ? reportForm.tipo : 'found') === 'found' ? 'ENCONTRADO' : 'PERDIDO',
+        nombre: reportForm.nombreDesconocido ? null : reportForm.nombre || null,
+        especie: reportForm.especie,
+        color: reportForm.color || null,
+        descripcion: reportForm.descripcion,
+        fotos: fotosUrls,
+        latitud: pawPosition?.[0] ?? null,
+        longitud: pawPosition?.[1] ?? null,
+      };
+
+      if (isAuthenticated) {
+        await api.post('/pets', base);
+      } else {
+        await api.post('/pets/guest', { ...base, contactoEmail: reportForm.email });
+      }
+
+      setJoyrideRun(false);
+      setReportFormOpen(false);
+      setJoyrideStep(0);
+      setReportSuccess(true);
+      setTimeout(() => setReportSuccess(false), 5000);
+    } catch (err: any) {
+      setJoyrideRun(false);
+      setJoyrideStep(0);
+      setReportFormOpen(false);
+      const msg = err.response?.data?.message ?? 'Error al enviar el reporte. Intenta nuevamente.';
+      alert(msg);
+    } finally {
+      setSubmittingReport(false);
+    }
   };
 
   // ── Render ───────────────────────────────────────────────────
@@ -355,7 +453,16 @@ export default function Map() {
               className="report-detail-photo"
               style={{ background: selectedReport.type === 'found' ? '#EBF4FF' : '#FFFFF0' }}
             >
-              <span className="report-detail-photo__emoji">{especieEmoji(selectedReport.especie)}</span>
+              {selectedReport.fotos.length > 0 ? (
+                <img
+                  src={selectedReport.fotos[0]}
+                  alt={selectedReport.petName}
+                  className="report-detail-photo__clickable"
+                  onClick={e => { e.stopPropagation(); setLightboxSrc(selectedReport.fotos[0]); }}
+                />
+              ) : (
+                <span className="report-detail-photo__emoji">{especieEmoji(selectedReport.especie)}</span>
+              )}
             </div>
 
             {/* Cabecera con badges y cierre */}
@@ -395,20 +502,51 @@ export default function Map() {
 
               <div className="report-detail-desc">{selectedReport.description}</div>
 
-              <a
-                href={`mailto:${selectedReport.contacto}`}
-                className="report-detail-contact"
-                onClick={e => e.stopPropagation()}
-              >
+              <div className="report-detail-contact">
                 <span className="report-detail-contact__icon">✉</span>
                 <div>
                   <div className="report-detail-contact__label">Contactar al reportante</div>
-                  <div className="report-detail-contact__email">{selectedReport.contacto}</div>
+                  {selectedReport.contactoName && (
+                    <div className="report-detail-contact__email" style={{ fontWeight: 600, color: '#374151' }}>
+                      {selectedReport.contactoName}
+                    </div>
+                  )}
+                  {selectedReport.contacto && (
+                    <a
+                      href={`mailto:${selectedReport.contacto}`}
+                      className="report-detail-contact__email"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {selectedReport.contacto}
+                    </a>
+                  )}
+                  {selectedReport.contactoPhone && (
+                    <a
+                      href={`tel:${selectedReport.contactoPhone}`}
+                      className="report-detail-contact__email"
+                      style={{ display: 'block', marginTop: '2px' }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      📞 {selectedReport.contactoPhone}
+                    </a>
+                  )}
                 </div>
-              </a>
+              </div>
             </div>
 
           </div>
+        </div>
+      )}
+
+      {lightboxSrc && (
+        <div className="lightbox-overlay" onClick={() => setLightboxSrc(null)}>
+          <button className="lightbox-close" onClick={e => { e.stopPropagation(); setLightboxSrc(null); }}>✕</button>
+          <img
+            src={lightboxSrc}
+            alt="Foto de mascota"
+            className="lightbox-img"
+            onClick={e => e.stopPropagation()}
+          />
         </div>
       )}
 
@@ -557,8 +695,8 @@ export default function Map() {
                   </div>
                 )}
 
-                <button className="sidebar-submit-btn" onClick={handleReportSubmit}>
-                  ✓ Enviar reporte
+                <button className="sidebar-submit-btn" onClick={handleReportSubmit} disabled={submittingReport}>
+                  {submittingReport ? 'Enviando...' : '✓ Enviar reporte'}
                 </button>
                 <button className="sidebar-cancel-btn" onClick={handleCancelReport}>
                   Cancelar
@@ -707,14 +845,17 @@ export default function Map() {
                   <div className="sidebar-section sidebar-section--search">
                     <button
                       className="sidebar-apply-btn"
-                      onClick={() => setFiltersApplied(true)}
+                      onClick={handleSearch}
+                      disabled={loadingSearch}
                     >
                       <Search size={15} />
-                      {filtersApplied ? 'Actualizar resultados' : 'Buscar en esta zona'}
+                      {loadingSearch ? 'Buscando...' : filtersApplied ? 'Actualizar resultados' : 'Buscar en esta zona'}
                     </button>
-                    {filtersApplied && (
+                    {filtersApplied && !loadingSearch && (
                       <p className="sidebar-hint">
-                        {filteredExplore.length === 0
+                        {searchError
+                          ? searchError
+                          : filteredExplore.length === 0
                           ? 'Sin resultados con estos filtros'
                           : `${filteredExplore.length} reporte${filteredExplore.length !== 1 ? 's' : ''} encontrado${filteredExplore.length !== 1 ? 's' : ''}`}
                       </p>

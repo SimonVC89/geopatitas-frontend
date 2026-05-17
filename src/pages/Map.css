@@ -936,11 +936,64 @@
 
 .report-detail-photo {
   width: 100%;
-  height: 140px;
+  height: 180px;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 12px 12px 0 0;
 }
+.report-detail-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  background: #f0f0f0;
+}
+.report-detail-photo__clickable {
+  cursor: zoom-in;
+  transition: opacity 0.15s;
+}
+.report-detail-photo__clickable:hover { opacity: 0.88; }
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.3); }
+
 .report-detail-photo__emoji {
   font-size: 4.5rem;
   line-height: 1;

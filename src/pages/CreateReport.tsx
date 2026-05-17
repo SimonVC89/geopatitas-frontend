@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+
+const ESPECIE_MAP: Record<string, string> = {
+  dog: 'Perro', cat: 'Gato', bird: 'Ave', rabbit: 'Conejo', other: 'Otro',
+};
 
 export default function CreateReport() {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const routeLocation  = useLocation();
+  const { isAuthenticated, user } = useAuth();
 
   const [formData, setFormData] = useState({
     type: searchParams.get('type') === 'found' ? 'found' : 'lost',
@@ -23,8 +30,9 @@ export default function CreateReport() {
     contactEmail: '',
   });
 
-  const [locationPicked, setLocationPicked] = useState(false);
-  const [loading,        setLoading]        = useState(false);
+  const [locationPicked,        setLocationPicked]        = useState(false);
+  const [loading,               setLoading]               = useState(false);
+  const [forThirdParty,         setForThirdParty]         = useState(false);
 
   // Restaurar formulario + coordenadas al volver del mapa
   useEffect(() => {
@@ -68,14 +76,53 @@ export default function CreateReport() {
     }
     setLoading(true);
     try {
-      console.log('Creando reporte:', formData);
-      setTimeout(() => {
-        alert('¡Reporte creado exitosamente!');
-        navigate('/mis-reportes');
-      }, 1000);
-    } catch (error) {
+      // 1. Subir foto si existe (solo usuarios autenticados)
+      let fotosUrls: string[] = [];
+      if (formData.photo && isAuthenticated) {
+        const fd = new FormData();
+        fd.append('file', formData.photo);
+        const { data: up } = await api.post('/pets/upload-image', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        if (up?.url) fotosUrls = [up.url];
+      }
+
+      // 2. Construir payload
+      const base = {
+        tipoReporte: formData.type === 'found' ? 'ENCONTRADO' : 'PERDIDO',
+        nombre: formData.petName || null,
+        especie: ESPECIE_MAP[formData.species] ?? formData.species,
+        raza: formData.breed || null,
+        color: formData.color || null,
+        descripcion: formData.description,
+        fotos: fotosUrls,
+        latitud: parseFloat(formData.latitude),
+        longitud: parseFloat(formData.longitude),
+      };
+
+      // 3. Enviar al endpoint correcto
+      if (isAuthenticated) {
+        const payload = {
+          ...base,
+          ...(forThirdParty && formData.contactName  ? { contactoNombre:   formData.contactName  } : {}),
+          ...(forThirdParty && formData.contactEmail ? { contactoEmail:    formData.contactEmail } : {}),
+          ...(forThirdParty && formData.contactPhone ? { contactoTelefono: formData.contactPhone } : {}),
+        };
+        await api.post('/pets', payload);
+      } else {
+        if (!formData.contactEmail) {
+          alert('Por favor ingresa tu email de contacto.');
+          return;
+        }
+        await api.post('/pets/guest', { ...base, contactoEmail: formData.contactEmail });
+      }
+
+      alert('¡Reporte creado exitosamente!');
+      navigate('/mapa');
+    } catch (error: any) {
       console.error('Error creando reporte:', error);
-      alert('Error al crear el reporte. Intenta nuevamente.');
+      const msg = error.response?.data?.message ?? 'Error al crear el reporte. Intenta nuevamente.';
+      alert(msg);
     } finally {
       setLoading(false);
     }
@@ -172,16 +219,6 @@ export default function CreateReport() {
                 />
               </div>
 
-              <div className="mt-4">
-                <label htmlFor="photo" className="block text-sm font-medium text-gray-700 mb-2">
-                  Foto de la Mascota
-                </label>
-                <input
-                  id="photo" name="photo" type="file" accept="image/*"
-                  onChange={handleFileChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
             </div>
 
             {/* Ubicación */}
@@ -242,36 +279,100 @@ export default function CreateReport() {
               </div>
             </div>
 
+            {/* Foto */}
+            <div className="border-t pt-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Foto de la Mascota</h2>
+              <input
+                id="photo" name="photo" type="file" accept="image/*"
+                onChange={handleFileChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+              {formData.photo
+                ? <p className="text-xs text-green-600 mt-2">✓ {formData.photo.name}</p>
+                : <p className="text-xs text-gray-400 mt-2">Selecciona primero la ubicación en el mapa y luego sube la foto.</p>
+              }
+            </div>
+
             {/* Información de Contacto */}
             <div className="border-t pt-6">
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Información de Contacto</h2>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="contactName" className="block text-sm font-medium text-gray-700 mb-2">Nombre *</label>
-                  <input
-                    id="contactName" name="contactName" type="text" required
-                    value={formData.contactName} onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  />
+
+              {isAuthenticated ? (
+                <div className="space-y-4">
+                  <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={forThirdParty}
+                      onChange={e => setForThirdParty(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">Registrar para alguien más</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Activa esto si estás reportando en nombre de otra persona (familiar, vecino, etc.)</p>
+                    </div>
+                  </label>
+
+                  {forThirdParty && (
+                    <div className="space-y-4 pl-1">
+                      <div>
+                        <label htmlFor="contactName" className="block text-sm font-medium text-gray-700 mb-2">Nombre de contacto</label>
+                        <input
+                          id="contactName" name="contactName" type="text"
+                          value={formData.contactName} onChange={handleChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          placeholder="ej: Luis Martínez"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700 mb-2">Teléfono de contacto</label>
+                        <input
+                          id="contactPhone" name="contactPhone" type="tel"
+                          value={formData.contactPhone} onChange={handleChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          placeholder="+56 9 1234 5678"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700 mb-2">Email de contacto</label>
+                        <input
+                          id="contactEmail" name="contactEmail" type="email"
+                          value={formData.contactEmail} onChange={handleChange}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                          placeholder="ej: luis@email.com"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700 mb-2">Teléfono *</label>
-                  <input
-                    id="contactPhone" name="contactPhone" type="tel" required
-                    value={formData.contactPhone} onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                    placeholder="+56 9 1234 5678"
-                  />
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="contactName" className="block text-sm font-medium text-gray-700 mb-2">Nombre *</label>
+                    <input
+                      id="contactName" name="contactName" type="text" required
+                      value={formData.contactName} onChange={handleChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700 mb-2">Teléfono *</label>
+                    <input
+                      id="contactPhone" name="contactPhone" type="tel" required
+                      value={formData.contactPhone} onChange={handleChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                      placeholder="+56 9 1234 5678"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                    <input
+                      id="contactEmail" name="contactEmail" type="email" required
+                      value={formData.contactEmail} onChange={handleChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
-                  <input
-                    id="contactEmail" name="contactEmail" type="email" required
-                    value={formData.contactEmail} onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Botones */}

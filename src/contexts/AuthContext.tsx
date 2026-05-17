@@ -1,12 +1,14 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
+import { api } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isGuest: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (nombre: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   continueAsGuest: () => void;
 }
@@ -43,21 +45,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    // ── Mock temporal para pruebas de frontend ──────────────────
-    if (email === 'admin@demo.com' && password === 'admin') {
-      const mockUser: User = {
-        id: 'mock-admin-001',
-        email: 'admin@demo.com',
-        name: 'Admin Demo',
-        createdAt: new Date(),
-      };
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      localStorage.setItem('token', 'mock-token-dev-only');
-      return;
-    }
-    // ── TODO: reemplazar con llamada real al backend ─────────────
-    throw new Error('Credenciales incorrectas');
+    const { data } = await api.post('/auth/login', { email, password });
+    const loggedUser: User = {
+      id: String(data.user_id),
+      email,
+      name: data.nombre,
+      createdAt: new Date(),
+    };
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(loggedUser));
+    setUser(loggedUser);
+  };
+
+  const register = async (nombre: string, email: string, password: string) => {
+    const { data } = await api.post('/auth/register', { nombre, email, password });
+    localStorage.setItem('token', data.token);
+    const { data: profile } = await api.get('/users/me');
+    const loggedUser: User = {
+      id: String(profile.id),
+      email: profile.email,
+      name: profile.nombre,
+      createdAt: new Date(),
+    };
+    localStorage.setItem('user', JSON.stringify(loggedUser));
+    setUser(loggedUser);
   };
 
   const logout = () => {
@@ -80,6 +91,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         isAuthenticated: !!user,
         isGuest,
         login,
+        register,
         logout,
         continueAsGuest,
       }}

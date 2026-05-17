@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -11,6 +12,7 @@ export default function Register() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -38,16 +40,11 @@ export default function Register() {
     setLoading(true);
 
     try {
-      // TODO: Implementar registro con el backend
-      // await api.post('/auth/register', formData);
-      console.log('Registrando usuario:', formData);
-
-      // Simulación - redirigir al login
-      setTimeout(() => {
-        navigate('/login');
-      }, 1000);
-    } catch (err) {
-      setError('Error al registrar usuario. Intenta nuevamente.');
+      await register(formData.name, formData.email, formData.password);
+      navigate('/mapa');
+    } catch (err: any) {
+      const msg = err.response?.data?.message ?? 'Error al registrar usuario. Intenta nuevamente.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
