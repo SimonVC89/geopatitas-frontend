@@ -200,7 +200,7 @@ export default function Map() {
   const [reportForm,     setReportForm]     = useState({
     tipo: 'found' as 'found' | 'lost',
     nombreDesconocido: true,
-    nombre: '', especie: '', color: '', descripcion: '', foto: null as File|null, email: '',
+    nombre: '', especie: '', color: '', tamano: '', raza: '', sexo: '', descripcion: '', foto: null as File|null, email: '',
   });
   const [reportSuccess,     setReportSuccess]     = useState(false);
   const [submittingReport,  setSubmittingReport]  = useState(false);
@@ -266,7 +266,11 @@ export default function Map() {
   const handleJoyrideCallback = (data: EventData) => {
     const { status, type, action, index } = data;
 
-    if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
+    if (
+      status === STATUS.FINISHED ||
+      status === STATUS.SKIPPED  ||
+      action === ACTIONS.CLOSE
+    ) {
       setJoyrideRun(false);
       setReportFormOpen(false);
       setIsPlacingPaw(false);
@@ -274,7 +278,7 @@ export default function Map() {
       return;
     }
     if (type === EVENTS.STEP_AFTER && action === ACTIONS.NEXT) {
-      if (isAuthenticated && index === 0) setReportFormOpen(true); // radio → abre formulario
+      if (isAuthenticated && index === 0) setReportFormOpen(true);
       setJoyrideStep(index + 1);
     }
     if (type === EVENTS.STEP_AFTER && action === ACTIONS.PREV) {
@@ -343,6 +347,9 @@ export default function Map() {
         nombre: reportForm.nombreDesconocido ? null : reportForm.nombre || null,
         especie: reportForm.especie,
         color: reportForm.color || null,
+        tamano: reportForm.tamano || null,
+        raza: reportForm.raza || null,
+        sexo: reportForm.sexo || null,
         descripcion: reportForm.descripcion,
         fotos: fotosUrls,
         latitud: pawPosition?.[0] ?? null,
@@ -650,7 +657,10 @@ export default function Map() {
                 </div>
 
                 <div className="sidebar-field">
-                  <label className="sidebar-label">Color principal</label>
+                  <label className="sidebar-label">
+                    Color principal{' '}
+                    <span className="sidebar-label-hint">Opcional (ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
                   <select className="sidebar-select" value={reportForm.color} onChange={e => setReportForm(f => ({ ...f, color: e.target.value }))}>
                     <option value="">Selecciona...</option>
                     {COLORES.filter(x => x !== 'Todos').map(x => <option key={x}>{x}</option>)}
@@ -658,14 +668,55 @@ export default function Map() {
                 </div>
 
                 <div className="sidebar-field">
-                  <label className="sidebar-label">Descripción breve</label>
+                  <label className="sidebar-label">
+                    Tamaño{' '}
+                    <span className="sidebar-label-hint">Opcional (ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <select className="sidebar-select" value={reportForm.tamano} onChange={e => setReportForm(f => ({ ...f, tamano: e.target.value }))}>
+                    <option value="">Selecciona...</option>
+                    {TAMANOS.filter(x => x !== 'Todos').map(x => <option key={x}>{x}</option>)}
+                  </select>
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">
+                    Raza{' '}
+                    <span className="sidebar-label-hint">Opcional (ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="sidebar-input"
+                    placeholder="ej: Labrador"
+                    value={reportForm.raza}
+                    onChange={e => setReportForm(f => ({ ...f, raza: e.target.value }))}
+                  />
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">
+                    Sexo{' '}
+                    <span className="sidebar-label-hint">Opcional (ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <select className="sidebar-select" value={reportForm.sexo} onChange={e => setReportForm(f => ({ ...f, sexo: e.target.value }))}>
+                    <option value="">Selecciona...</option>
+                    <option>Macho</option>
+                    <option>Hembra</option>
+                    <option>No sé</option>
+                  </select>
+                </div>
+
+                <div className="sidebar-field">
+                  <label className="sidebar-label">Descripción detallada *</label>
                   <textarea
                     className="sidebar-textarea"
                     rows={3}
-                    placeholder="Collar, rasgos especiales, comportamiento..."
+                    placeholder="Collar, rasgos especiales, comportamiento, señas particulares..."
                     value={reportForm.descripcion}
                     onChange={e => setReportForm(f => ({ ...f, descripcion: e.target.value }))}
                   />
+                  <p className="sidebar-field-hint">
+                    La IA usa solo este texto para buscar coincidencias — no los campos de arriba. Descríbela con todos los detalles posibles: color, tamaño, raza, comportamiento, collar, señas particulares...
+                  </p>
                 </div>
 
                 <div className="sidebar-field">
@@ -746,7 +797,7 @@ export default function Map() {
                 <div className={`sidebar-section${showExploreGuide ? ' sidebar-section--lit' : ''}`}>
                   <button
                     className={`sidebar-btn sidebar-btn--primary${isPlacingPaw ? ' sidebar-btn--active' : ''}`}
-                    onClick={() => { setShowExploreGuide(false); if (!joyrideRun) setIsPlacingPaw(v => !v); }}
+                    onClick={() => { setShowExploreGuide(false); setExploreMode(true); if (!joyrideRun) setIsPlacingPaw(v => !v); }}
                   >
                     <MapPin size={15} />
                     Ubícame en el mapa

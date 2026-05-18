@@ -40,7 +40,7 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await register(formData.name, formData.email, formData.password);
+      await register(formData.name, formData.email, formData.password, formData.phone || undefined);
       navigate('/mapa');
     } catch (err: any) {
       const msg = err.response?.data?.message ?? 'Error al registrar usuario. Intenta nuevamente.';

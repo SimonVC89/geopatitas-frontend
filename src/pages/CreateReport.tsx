@@ -11,7 +11,7 @@ export default function CreateReport() {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const routeLocation  = useLocation();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [formData, setFormData] = useState({
     type: searchParams.get('type') === 'found' ? 'found' : 'lost',
@@ -19,6 +19,8 @@ export default function CreateReport() {
     species: 'dog',
     breed: '',
     color: '',
+    tamano: '',
+    sexo: '',
     description: '',
     photo: null as File | null,
     latitude: '',
@@ -68,7 +70,7 @@ export default function CreateReport() {
     navigate('/mapa', { state: { pickingLocation: true } });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!locationPicked) {
       alert('Por favor selecciona la ubicación en el mapa antes de continuar.');
@@ -94,6 +96,8 @@ export default function CreateReport() {
         especie: ESPECIE_MAP[formData.species] ?? formData.species,
         raza: formData.breed || null,
         color: formData.color || null,
+        tamano: formData.tamano || null,
+        sexo: formData.sexo || null,
         descripcion: formData.description,
         fotos: fotosUrls,
         latitud: parseFloat(formData.latitude),
@@ -188,7 +192,9 @@ export default function CreateReport() {
                 </div>
 
                 <div>
-                  <label htmlFor="breed" className="block text-sm font-medium text-gray-700 mb-2">Raza (opcional)</label>
+                  <label htmlFor="breed" className="block text-sm font-medium text-gray-700 mb-1">
+                    Raza <span className="text-gray-400 font-normal text-xs">(Opcional — ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
                   <input
                     id="breed" name="breed" type="text" value={formData.breed} onChange={handleChange}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
@@ -197,12 +203,48 @@ export default function CreateReport() {
                 </div>
 
                 <div>
-                  <label htmlFor="color" className="block text-sm font-medium text-gray-700 mb-2">Color</label>
-                  <input
-                    id="color" name="color" type="text" value={formData.color} onChange={handleChange}
+                  <label htmlFor="color" className="block text-sm font-medium text-gray-700 mb-1">
+                    Color principal <span className="text-gray-400 font-normal text-xs">(Opcional — ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <select
+                    id="color" name="color" value={formData.color} onChange={handleChange}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                    placeholder="ej: Dorado"
-                  />
+                  >
+                    <option value="">Selecciona...</option>
+                    {['Blanco', 'Negro', 'Marrón', 'Amarillo', 'Gris', 'Naranja', 'Multicolor'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="tamano" className="block text-sm font-medium text-gray-700 mb-1">
+                    Tamaño <span className="text-gray-400 font-normal text-xs">(Opcional — ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <select
+                    id="tamano" name="tamano" value={formData.tamano} onChange={handleChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">Selecciona...</option>
+                    <option value="Pequeño">Pequeño</option>
+                    <option value="Mediano">Mediano</option>
+                    <option value="Grande">Grande</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="sexo" className="block text-sm font-medium text-gray-700 mb-1">
+                    Sexo <span className="text-gray-400 font-normal text-xs">(Opcional — ayuda a otros usuarios a filtrar el mapa)</span>
+                  </label>
+                  <select
+                    id="sexo" name="sexo" value={formData.sexo} onChange={handleChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="">Selecciona...</option>
+                    <option value="Macho">Macho</option>
+                    <option value="Hembra">Hembra</option>
+                    <option value="No sé">No sé</option>
+                  </select>
                 </div>
               </div>
 
@@ -215,8 +257,11 @@ export default function CreateReport() {
                   value={formData.description} onChange={handleChange}
                   rows={4}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                  placeholder="Describe características distintivas, comportamiento, collar, etc."
+                  placeholder="Describe características distintivas, comportamiento, collar, señas particulares..."
                 />
+                <p className="text-xs text-blue-500 mt-1.5">
+                  La IA usa solo este texto para buscar coincidencias — no los campos de arriba. Descríbela con todos los detalles posibles: color, tamaño, raza, comportamiento, collar, señas particulares...
+                </p>
               </div>
 
             </div>

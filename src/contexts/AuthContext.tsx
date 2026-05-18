@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isGuest: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (nombre: string, email: string, password: string) => Promise<void>;
+  register: (nombre: string, email: string, password: string, telefono?: string) => Promise<void>;
   logout: () => void;
   continueAsGuest: () => void;
 }
@@ -57,8 +57,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     setUser(loggedUser);
   };
 
-  const register = async (nombre: string, email: string, password: string) => {
-    const { data } = await api.post('/auth/register', { nombre, email, password });
+  const register = async (nombre: string, email: string, password: string, telefono?: string) => {
+    const { data } = await api.post('/auth/register', { nombre, email, password, ...(telefono ? { telefono } : {}) });
     localStorage.setItem('token', data.token);
     const { data: profile } = await api.get('/users/me');
     const loggedUser: User = {
