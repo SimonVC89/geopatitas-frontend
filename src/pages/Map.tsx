@@ -258,8 +258,13 @@ export default function Map() {
   });
   const [reportSuccess,     setReportSuccess]     = useState(false);
   const [submittingReport,  setSubmittingReport]  = useState(false);
-  const [selectedReport, setSelectedReport] = useState<ReportDisplay | null>(null);
-  const [lightboxSrc,   setLightboxSrc]   = useState<string | null>(null);
+  const [selectedReport,    setSelectedReport]    = useState<ReportDisplay | null>(null);
+  const [lightboxSrc,       setLightboxSrc]       = useState<string | null>(null);
+  const [mapContactOpen,    setMapContactOpen]    = useState(false);
+  const [mapContactLoading, setMapContactLoading] = useState(false);
+  const [mapContactData,    setMapContactData]    = useState<{
+    nombre: string | null; email: string | null; telefono: string | null;
+  } | null>(null);
 
   // Modo selector de ubicación (desde /reportar)
   const [locationPickerMode,   setLocationPickerMode]   = useState(false);
@@ -436,6 +441,31 @@ export default function Map() {
     } finally {
       setSubmittingReport(false);
     }
+  };
+
+  // ── Contacto del mapa: fetch on click ────────────────────────────
+  const openMapContact = async () => {
+    if (!selectedReport) return;
+    setMapContactOpen(true);
+    setMapContactData(null);
+    setMapContactLoading(true);
+    try {
+      const { data } = await api.get(`/pets/${selectedReport.id}`);
+      setMapContactData({
+        nombre:   data.contactoNombre   ?? data.user?.nombre   ?? null,
+        email:    data.contactoEmail    ?? data.user?.email    ?? null,
+        telefono: data.contactoTelefono ?? data.user?.telefono ?? null,
+      });
+    } catch {
+      setMapContactData({ nombre: null, email: null, telefono: null });
+    } finally {
+      setMapContactLoading(false);
+    }
+  };
+
+  const closeMapContact = () => {
+    setMapContactOpen(false);
+    setMapContactData(null);
   };
 
   // ── Datos derivados del match view (calculados antes del render) ──
@@ -618,38 +648,105 @@ export default function Map() {
 
               <div className="report-detail-desc">{selectedReport.description}</div>
 
-              <div className="report-detail-contact">
+              <button
+                className="report-detail-contact"
+                style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
+                onClick={e => { e.stopPropagation(); openMapContact(); }}
+              >
                 <span className="report-detail-contact__icon">✉</span>
                 <div>
                   <div className="report-detail-contact__label">Contactar al reportante</div>
-                  {selectedReport.contactoName && (
-                    <div className="report-detail-contact__email" style={{ fontWeight: 600, color: '#374151' }}>
-                      {selectedReport.contactoName}
-                    </div>
-                  )}
-                  {selectedReport.contacto && (
-                    <a
-                      href={`mailto:${selectedReport.contacto}`}
-                      className="report-detail-contact__email"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {selectedReport.contacto}
-                    </a>
-                  )}
-                  {selectedReport.contactoPhone && (
-                    <a
-                      href={`tel:${selectedReport.contactoPhone}`}
-                      className="report-detail-contact__email"
-                      style={{ display: 'block', marginTop: '2px' }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      📞 {selectedReport.contactoPhone}
-                    </a>
-                  )}
+                  <div className="report-detail-contact__email" style={{ color: '#2B6CB0', fontWeight: 600 }}>
+                    Toca para ver los datos →
+                  </div>
                 </div>
-              </div>
+              </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {mapContactOpen && selectedReport && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[20000] p-4"
+          onClick={closeMapContact}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#2D3748', margin: 0 }}>
+                Contactar al reportante
+              </h2>
+              <button onClick={closeMapContact} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#A0AEC0', fontSize: '1.2rem' }}>✕</button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1rem' }}>
+              Información de quien reportó <strong>{selectedReport.petName}</strong>:
+            </p>
+
+            {mapContactLoading && (
+              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#A0AEC0', fontSize: '0.85rem' }}>
+                Cargando datos...
+              </div>
+            )}
+
+            {!mapContactLoading && mapContactData && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                {!mapContactData.nombre && !mapContactData.email && !mapContactData.telefono ? (
+                  <div style={{ display: 'flex', gap: '0.75rem', padding: '0.85rem', background: '#F9FAFB', borderRadius: '0.75rem', border: '1px solid #E5E7EB' }}>
+                    <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>ℹ️</span>
+                    <div>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151', margin: '0 0 0.2rem' }}>Sin datos de contacto</p>
+                      <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: 0, lineHeight: 1.5 }}>El reportante no compartió información de contacto pública.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {mapContactData.nombre && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.65rem', background: '#F9FAFB', borderRadius: '0.75rem' }}>
+                        <span style={{ fontSize: '1.1rem' }}>👤</span>
+                        <div>
+                          <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.1rem' }}>Nombre</p>
+                          <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1F2937', margin: 0 }}>{mapContactData.nombre}</p>
+                        </div>
+                      </div>
+                    )}
+                    {mapContactData.email && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.65rem', background: '#F9FAFB', borderRadius: '0.75rem' }}>
+                        <span style={{ fontSize: '1.1rem' }}>✉️</span>
+                        <div>
+                          <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.1rem' }}>Correo</p>
+                          <a href={`mailto:${mapContactData.email}`} style={{ fontSize: '0.875rem', fontWeight: 600, color: '#059669', textDecoration: 'underline' }} onClick={e => e.stopPropagation()}>
+                            {mapContactData.email}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {mapContactData.telefono && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', padding: '0.65rem', background: '#F9FAFB', borderRadius: '0.75rem' }}>
+                        <span style={{ fontSize: '1.1rem' }}>📞</span>
+                        <div>
+                          <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.1rem' }}>Teléfono</p>
+                          <a href={`tel:${mapContactData.telefono}`} style={{ fontSize: '0.875rem', fontWeight: 600, color: '#059669', textDecoration: 'underline' }} onClick={e => e.stopPropagation()}>
+                            📞 {mapContactData.telefono}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={closeMapContact}
+              style={{ width: '100%', marginTop: '1.25rem', padding: '0.65rem', background: '#F3F4F6', border: 'none', borderRadius: '0.75rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}
+            >
+              Cerrar
+            </button>
           </div>
         </div>
       )}

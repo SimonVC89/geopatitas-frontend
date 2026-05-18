@@ -126,7 +126,11 @@ export default function MyReports() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   // Modal: Contacto del reportante de un match
-  const [contactModal, setContactModal] = useState<MatchItem | null>(null);
+  const [contactModal,   setContactModal]   = useState<MatchItem | null>(null);
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactFetched, setContactFetched] = useState<{
+    nombre: string | null; email: string | null; telefono: string | null;
+  } | null>(null);
 
   // ── Cargar ─────────────────────────────────────────────────────────────────
 
@@ -254,6 +258,31 @@ export default function MyReports() {
     setMatchModal(null);
     setConfirmedMatch(null);
     setMatches([]);
+  };
+
+  const openContactModal = async (m: MatchItem) => {
+    setContactModal(m);
+    setContactFetched(null);
+    // Si el item ya trae datos de contacto, úsalos directamente
+    const existing = getContacto(m);
+    if (existing.nombre || existing.email || existing.telefono) {
+      setContactFetched(existing);
+      return;
+    }
+    // Si no, busca el reporte completo por ID
+    setContactLoading(true);
+    try {
+      const { data } = await api.get(`/pets/${m.id}`);
+      setContactFetched({
+        nombre:   data.contactoNombre   ?? data.user?.nombre   ?? null,
+        email:    data.contactoEmail    ?? data.user?.email    ?? null,
+        telefono: data.contactoTelefono ?? data.user?.telefono ?? null,
+      });
+    } catch {
+      setContactFetched({ nombre: null, email: null, telefono: null });
+    } finally {
+      setContactLoading(false);
+    }
   };
 
   const handleResolveFromMatch = async () => {
@@ -823,7 +852,6 @@ export default function MyReports() {
               {!loadingMatches && matches.map((m, i) => {
                 const pct         = matchPct(m);
                 const isConfirmed = confirmedMatch?.id === m.id;
-                const contacto    = getContacto(m);
                 const hasMap      = m.latitud != null && m.longitud != null;
 
                 return (
@@ -903,15 +931,13 @@ export default function MyReports() {
                         </button>
                       )}
 
-                      {/* Contactar con usuario */}
-                      {(contacto.nombre || contacto.email || contacto.telefono) && (
-                        <button
-                          onClick={() => setContactModal(m)}
-                          className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
-                        >
-                          📞 Contactar reportante
-                        </button>
-                      )}
+                      {/* Contactar con usuario — siempre visible */}
+                      <button
+                        onClick={() => openContactModal(m)}
+                        className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        📞 Contactar reportante
+                      </button>
 
                       {/* Esta es mi mascota / Seleccionado */}
                       {isConfirmed ? (
@@ -946,79 +972,101 @@ export default function MyReports() {
       {/* ════════════════════════════════════════════════
           MODAL — Contacto del reportante
       ════════════════════════════════════════════════ */}
-      {contactModal && (() => {
-        const c = getContacto(contactModal);
-        return (
+      {contactModal && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[4000] p-4"
+          onClick={() => { setContactModal(null); setContactFetched(null); }}
+        >
           <div
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[4000] p-4"
-            onClick={() => setContactModal(null)}
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={e => e.stopPropagation()}
           >
-            <div
-              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-800">Contactar reportante</h2>
-                <button onClick={() => setContactModal(null)} className="text-gray-400 hover:text-gray-700">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <p className="text-sm text-gray-500 mb-4">
-                Información de quien reportó{' '}
-                <strong>{contactModal.nombre || contactModal.especie}</strong>:
-              </p>
-
-              <div className="space-y-3">
-                {c.nombre && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <span className="text-lg">👤</span>
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Nombre</p>
-                      <p className="text-sm font-semibold text-gray-800">{c.nombre}</p>
-                    </div>
-                  </div>
-                )}
-                {c.email && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <span className="text-lg">✉️</span>
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Correo</p>
-                      <a
-                        href={`mailto:${c.email}`}
-                        className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
-                      >
-                        {c.email}
-                      </a>
-                    </div>
-                  </div>
-                )}
-                {c.telefono && (
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <span className="text-lg">📞</span>
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Teléfono</p>
-                      <a
-                        href={`tel:${c.telefono}`}
-                        className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
-                      >
-                        {c.telefono}
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Contactar reportante</h2>
               <button
-                onClick={() => setContactModal(null)}
-                className="w-full mt-5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl transition-colors"
+                onClick={() => { setContactModal(null); setContactFetched(null); }}
+                className="text-gray-400 hover:text-gray-700"
               >
-                Cerrar
+                <X size={20} />
               </button>
             </div>
+
+            <p className="text-sm text-gray-500 mb-4">
+              Información de quien reportó{' '}
+              <strong>{contactModal.nombre || contactModal.especie}</strong>:
+            </p>
+
+            {/* Estado: cargando */}
+            {contactLoading && (
+              <div className="text-center py-6 text-gray-400 text-sm">Cargando datos...</div>
+            )}
+
+            {/* Estado: datos cargados */}
+            {!contactLoading && contactFetched && (
+              <div className="space-y-3">
+                {!contactFetched.nombre && !contactFetched.email && !contactFetched.telefono ? (
+                  <div className="flex items-start gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <span className="text-xl flex-shrink-0">ℹ️</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">Sin datos de contacto</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                        El reportante no compartió información de contacto pública.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {contactFetched.nombre && (
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                        <span className="text-lg">👤</span>
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Nombre</p>
+                          <p className="text-sm font-semibold text-gray-800">{contactFetched.nombre}</p>
+                        </div>
+                      </div>
+                    )}
+                    {contactFetched.email && (
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                        <span className="text-lg">✉️</span>
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Correo</p>
+                          <a
+                            href={`mailto:${contactFetched.email}`}
+                            className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
+                          >
+                            {contactFetched.email}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {contactFetched.telefono && (
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                        <span className="text-lg">📞</span>
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Teléfono</p>
+                          <a
+                            href={`tel:${contactFetched.telefono}`}
+                            className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
+                          >
+                            {contactFetched.telefono}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={() => { setContactModal(null); setContactFetched(null); }}
+              className="w-full mt-5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl transition-colors"
+            >
+              Cerrar
+            </button>
           </div>
-        );
-      })()}
+        </div>
+      )}
 
       {/* ════════════════════════════════════════════════
           LIGHTBOX — Foto en tamaño completo
