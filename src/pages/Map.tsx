@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
 import {
-  MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, useMapEvents,
+  MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, Polyline, useMapEvents, useMap,
 } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { Joyride, STATUS, EVENTS, ACTIONS } from 'react-joyride';
@@ -136,6 +136,60 @@ function MapClickHandler({ active, onPlace }: { active: boolean; onPlace: (pos: 
   return null;
 }
 
+// ─── FitBounds (ajusta la vista para mostrar ambos puntos) ────────
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (positions.length >= 2) {
+      map.fitBounds(positions, { padding: [80, 80], maxZoom: 16 });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+// ─── Tipo para modo vista de coincidencia ─────────────────────────
+type MatchViewData = {
+  myPet: {
+    id: string; tipoReporte: string; nombre: string | null; especie: string;
+    raza: string | null; color: string | null; tamano: string | null;
+    descripcion: string; fotos: string[]; latitud: number; longitud: number;
+    estado: string; fechaReporte: string;
+  };
+  matchedPet: {
+    id: string; tipoReporte: string; nombre: string | null; especie: string;
+    raza: string | null; color: string | null; tamano: string | null;
+    descripcion: string; fotos: string[]; latitud?: number; longitud?: number;
+    distanciaKm?: number; porcentajeSimilitud?: number;
+    contactoNombre?: string; contactoEmail?: string; contactoTelefono?: string;
+  };
+};
+
+// ─── Icono "mi reporte" en match view ────────────────────────────
+const myPetMatchIcon = new DivIcon({
+  html: '<div class="match-my-marker">👤</div>',
+  className: '',
+  iconSize: [38, 38],
+  iconAnchor: [19, 19],
+});
+
+// ─── Badge de distancia en el punto medio ────────────────────────
+const makeDistanceIcon = (label: string) => new DivIcon({
+  html: `<div class="match-distance-badge">↔ ${label}</div>`,
+  className: '',
+  iconSize: [110, 30],
+  iconAnchor: [55, 15],
+});
+
+// ─── Haversine (distancia en km entre dos coordenadas) ───────────
+const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 // ─── Componente principal ────────────────────────────────────────
 export default function Map() {
   const { isAuthenticated } = useAuth();
@@ -211,11 +265,17 @@ export default function Map() {
   const [locationPickerMode,   setLocationPickerMode]   = useState(false);
   const [showLocationConfirm,  setShowLocationConfirm]  = useState(false);
 
+  // Modo vista de coincidencia (desde /mis-reportes → match)
+  const [matchViewData, setMatchViewData] = useState<MatchViewData | null>(null);
+
   useEffect(() => {
-    const state = routerLocation.state as { pickingLocation?: boolean } | null;
+    const state = routerLocation.state as { pickingLocation?: boolean; matchView?: MatchViewData } | null;
     if (state?.pickingLocation) {
       setLocationPickerMode(true);
       setIsPlacingPaw(true);
+    }
+    if (state?.matchView) {
+      setMatchViewData(state.matchView);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -377,6 +437,55 @@ export default function Map() {
       setSubmittingReport(false);
     }
   };
+
+  // ── Datos derivados del match view (calculados antes del render) ──
+  const matchView = (() => {
+    if (!matchViewData || matchViewData.matchedPet.latitud == null || matchViewData.matchedPet.longitud == null) return null;
+    const myPos:    [number, number] = [matchViewData.myPet.latitud,      matchViewData.myPet.longitud];
+    const matchPos: [number, number] = [matchViewData.matchedPet.latitud!, matchViewData.matchedPet.longitud!];
+    const midPos:   [number, number] = [(myPos[0] + matchPos[0]) / 2,     (myPos[1] + matchPos[1]) / 2];
+    const km = matchViewData.matchedPet.distanciaKm
+      ?? haversineKm(myPos[0], myPos[1], matchPos[0], matchPos[1]);
+    const distLabel = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+
+    const myPetDisplay: ReportDisplay = {
+      id:           matchViewData.myPet.id,
+      type:         matchViewData.myPet.tipoReporte === 'ENCONTRADO' ? 'found' : 'lost',
+      status:       matchViewData.myPet.estado === 'ACTIVO' ? 'active' : 'resolved',
+      especie:      matchViewData.myPet.especie,
+      color:        matchViewData.myPet.color  ? normalizeWord(matchViewData.myPet.color)  : 'Desconocido',
+      tamano:       matchViewData.myPet.tamano ? normalizeWord(matchViewData.myPet.tamano) : 'Desconocido',
+      fecha:        matchViewData.myPet.fechaReporte
+        ? new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(matchViewData.myPet.fechaReporte))
+        : 'Sin fecha',
+      contactoName: 'Tu reporte',
+      contacto:     '',
+      contactoPhone:'',
+      position:     myPos,
+      petName:      matchViewData.myPet.nombre ?? 'Desconocido',
+      description:  matchViewData.myPet.descripcion,
+      fotos:        matchViewData.myPet.fotos,
+    };
+
+    const matchedPetDisplay: ReportDisplay = {
+      id:           matchViewData.matchedPet.id,
+      type:         matchViewData.matchedPet.tipoReporte === 'ENCONTRADO' ? 'found' : 'lost',
+      status:       'active',
+      especie:      matchViewData.matchedPet.especie,
+      color:        matchViewData.matchedPet.color  ? normalizeWord(matchViewData.matchedPet.color)  : 'Desconocido',
+      tamano:       matchViewData.matchedPet.tamano ? normalizeWord(matchViewData.matchedPet.tamano) : 'Desconocido',
+      fecha:        'Sin fecha',
+      contactoName: matchViewData.matchedPet.contactoNombre  ?? '',
+      contacto:     matchViewData.matchedPet.contactoEmail   ?? '',
+      contactoPhone:matchViewData.matchedPet.contactoTelefono ?? '',
+      position:     matchPos,
+      petName:      matchViewData.matchedPet.nombre ?? 'Desconocido',
+      description:  matchViewData.matchedPet.descripcion,
+      fotos:        matchViewData.matchedPet.fotos,
+    };
+
+    return { myPos, matchPos, midPos, distLabel, myPetDisplay, matchedPetDisplay };
+  })();
 
   // ── Render ───────────────────────────────────────────────────
   return (
@@ -964,6 +1073,24 @@ export default function Map() {
               </div>
             )}
 
+            {matchView && (
+              <div className="match-view-banner">
+                <span className="match-view-banner__text">
+                  🐾 Mostrando coincidencia — <strong>{matchViewData!.myPet.nombre || matchViewData!.myPet.especie}</strong>
+                  {' '}↔ <strong>{matchViewData!.matchedPet.nombre || matchViewData!.matchedPet.especie}</strong>
+                  {matchViewData!.matchedPet.porcentajeSimilitud != null && (
+                    <> · {Math.round(matchViewData!.matchedPet.porcentajeSimilitud)}% de coincidencia</>
+                  )}
+                </span>
+                <button
+                  className="match-view-banner__btn"
+                  onClick={() => setMatchViewData(null)}
+                >
+                  ✕ Salir
+                </button>
+              </div>
+            )}
+
             <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} className="map-leaflet">
               <MapClickHandler active={isPlacingPaw} onPlace={handleMapPlace} />
               <TileLayer
@@ -986,7 +1113,7 @@ export default function Map() {
                 </>
               )}
 
-              {filtersApplied && filteredExplore.map(r => (
+              {!matchView && filtersApplied && filteredExplore.map(r => (
                 <Marker
                   key={r.id}
                   position={r.position}
@@ -995,7 +1122,7 @@ export default function Map() {
                 />
               ))}
 
-              {showMyReports && mockMyReports.map(r => (
+              {!matchView && showMyReports && mockMyReports.map(r => (
                 <Marker key={r.id} position={r.position} icon={lupaIcon}>
                   <Popup>
                     <div className="map-popup">
@@ -1006,6 +1133,30 @@ export default function Map() {
                   </Popup>
                 </Marker>
               ))}
+
+              {matchView && (
+                <>
+                  <FitBounds positions={[matchView.myPos, matchView.matchPos]} />
+                  <Polyline
+                    positions={[matchView.myPos, matchView.matchPos]}
+                    pathOptions={{ color: '#78B864', weight: 3, dashArray: '10, 7', opacity: 0.9 }}
+                  />
+                  <Marker
+                    position={matchView.midPos}
+                    icon={makeDistanceIcon(matchView.distLabel)}
+                  />
+                  <Marker
+                    position={matchView.myPos}
+                    icon={myPetMatchIcon}
+                    eventHandlers={{ click: () => setSelectedReport(matchView.myPetDisplay) }}
+                  />
+                  <Marker
+                    position={matchView.matchPos}
+                    icon={matchView.matchedPetDisplay.type === 'found' ? foundMarkerIcon : lostMarkerIcon}
+                    eventHandlers={{ click: () => setSelectedReport(matchView.matchedPetDisplay) }}
+                  />
+                </>
+              )}
             </MapContainer>
 
             <a href="#" className={`map-fab${showReportGuide ? ' map-fab--glow' : ''}`} onClick={handleFabClick}>

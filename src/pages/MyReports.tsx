@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { api } from '../services/api';
 import Footer from '../components/Footer';
@@ -33,9 +33,18 @@ type MatchItem = {
   tamano: string | null;
   descripcion: string;
   fotos: string[];
+  latitud?: number;
+  longitud?: number;
+  estado?: string;
+  fechaReporte?: string;
   score?: number;
   porcentajeSimilitud?: number;
   distanciaKm?: number;
+  // Contacto del reportante
+  contactoNombre?: string;
+  contactoEmail?: string;
+  contactoTelefono?: string;
+  user?: { nombre?: string; email?: string; telefono?: string };
 };
 
 type EditForm = {
@@ -76,9 +85,18 @@ const matchPct = (m: MatchItem): number | null => {
 const especieEmoji = (e: string) =>
   ({ Perro: '🐶', Gato: '🐱', Ave: '🐦', Conejo: '🐰' }[e] ?? '🐾');
 
+// Extrae contacto normalizado de un MatchItem
+const getContacto = (m: MatchItem) => ({
+  nombre:   m.contactoNombre  ?? m.user?.nombre   ?? null,
+  email:    m.contactoEmail   ?? m.user?.email    ?? null,
+  telefono: m.contactoTelefono ?? m.user?.telefono ?? null,
+});
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function MyReports() {
+  const navigate = useNavigate();
+
   const [reports, setReports] = useState<PetFromApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
@@ -103,6 +121,12 @@ export default function MyReports() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [confirmedMatch, setConfirmedMatch] = useState<MatchItem | null>(null);
   const [resolving,      setResolving]      = useState(false);
+
+  // Lightbox de foto (dentro del modal de match)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // Modal: Contacto del reportante de un match
+  const [contactModal, setContactModal] = useState<MatchItem | null>(null);
 
   // ── Cargar ─────────────────────────────────────────────────────────────────
 
@@ -246,6 +270,50 @@ export default function MyReports() {
     } finally {
       setResolving(false);
     }
+  };
+
+  const handleVerEnMapa = (matchedPet: MatchItem) => {
+    if (!matchModal) return;
+    closeMatchModal();
+    navigate('/mapa', {
+      state: {
+        matchView: {
+          myPet: {
+            id:          matchModal.id,
+            tipoReporte: matchModal.tipoReporte,
+            nombre:      matchModal.nombre,
+            especie:     matchModal.especie,
+            raza:        matchModal.raza,
+            color:       matchModal.color,
+            tamano:      matchModal.tamano,
+            descripcion: matchModal.descripcion,
+            fotos:       matchModal.fotos,
+            latitud:     matchModal.latitud,
+            longitud:    matchModal.longitud,
+            estado:      matchModal.estado,
+            fechaReporte: matchModal.fechaReporte,
+          },
+          matchedPet: {
+            id:          matchedPet.id,
+            tipoReporte: matchedPet.tipoReporte,
+            nombre:      matchedPet.nombre,
+            especie:     matchedPet.especie,
+            raza:        matchedPet.raza,
+            color:       matchedPet.color,
+            tamano:      matchedPet.tamano,
+            descripcion: matchedPet.descripcion,
+            fotos:       matchedPet.fotos,
+            latitud:     matchedPet.latitud,
+            longitud:    matchedPet.longitud,
+            distanciaKm: matchedPet.distanciaKm,
+            porcentajeSimilitud: matchedPet.porcentajeSimilitud ?? (matchedPet.score != null ? matchedPet.score * 100 : undefined),
+            contactoNombre:   matchedPet.contactoNombre  ?? matchedPet.user?.nombre,
+            contactoEmail:    matchedPet.contactoEmail   ?? matchedPet.user?.email,
+            contactoTelefono: matchedPet.contactoTelefono ?? matchedPet.user?.telefono,
+          },
+        },
+      },
+    });
   };
 
   // ── Stats ──────────────────────────────────────────────────────────────────
@@ -755,6 +823,8 @@ export default function MyReports() {
               {!loadingMatches && matches.map((m, i) => {
                 const pct         = matchPct(m);
                 const isConfirmed = confirmedMatch?.id === m.id;
+                const contacto    = getContacto(m);
+                const hasMap      = m.latitud != null && m.longitud != null;
 
                 return (
                   <div
@@ -766,12 +836,19 @@ export default function MyReports() {
                     }`}
                   >
                     <div className="flex gap-4">
+                      {/* Foto clickeable */}
                       {m.fotos?.[0] ? (
-                        <img
-                          src={m.fotos[0]}
-                          alt={m.nombre ?? 'Mascota'}
-                          className="w-20 h-20 object-cover rounded-xl flex-shrink-0"
-                        />
+                        <button
+                          className="w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden focus:outline-none focus:ring-2 focus:ring-green-400 cursor-zoom-in"
+                          onClick={() => setLightboxSrc(m.fotos[0])}
+                          title="Ver foto en tamaño completo"
+                        >
+                          <img
+                            src={m.fotos[0]}
+                            alt={m.nombre ?? 'Mascota'}
+                            className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                          />
+                        </button>
                       ) : (
                         <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center text-3xl flex-shrink-0">
                           {especieEmoji(m.especie)}
@@ -813,7 +890,30 @@ export default function MyReports() {
                       </div>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex justify-end">
+                    {/* Botones de acción */}
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2 justify-end">
+
+                      {/* Ver en mapa */}
+                      {hasMap && (
+                        <button
+                          onClick={() => handleVerEnMapa(m)}
+                          className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          🗺 Ver en mapa
+                        </button>
+                      )}
+
+                      {/* Contactar con usuario */}
+                      {(contacto.nombre || contacto.email || contacto.telefono) && (
+                        <button
+                          onClick={() => setContactModal(m)}
+                          className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                          📞 Contactar reportante
+                        </button>
+                      )}
+
+                      {/* Esta es mi mascota / Seleccionado */}
                       {isConfirmed ? (
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-semibold text-green-700">✓ Seleccionado</span>
@@ -840,6 +940,106 @@ export default function MyReports() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Contacto del reportante
+      ════════════════════════════════════════════════ */}
+      {contactModal && (() => {
+        const c = getContacto(contactModal);
+        return (
+          <div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-[4000] p-4"
+            onClick={() => setContactModal(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-800">Contactar reportante</h2>
+                <button onClick={() => setContactModal(null)} className="text-gray-400 hover:text-gray-700">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-500 mb-4">
+                Información de quien reportó{' '}
+                <strong>{contactModal.nombre || contactModal.especie}</strong>:
+              </p>
+
+              <div className="space-y-3">
+                {c.nombre && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <span className="text-lg">👤</span>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Nombre</p>
+                      <p className="text-sm font-semibold text-gray-800">{c.nombre}</p>
+                    </div>
+                  </div>
+                )}
+                {c.email && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <span className="text-lg">✉️</span>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Correo</p>
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
+                      >
+                        {c.email}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {c.telefono && (
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                    <span className="text-lg">📞</span>
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Teléfono</p>
+                      <a
+                        href={`tel:${c.telefono}`}
+                        className="text-sm font-semibold text-green-600 hover:text-green-800 underline"
+                      >
+                        {c.telefono}
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setContactModal(null)}
+                className="w-full mt-5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl transition-colors"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ════════════════════════════════════════════════
+          LIGHTBOX — Foto en tamaño completo
+      ════════════════════════════════════════════════ */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-[5000] p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl font-bold w-10 h-10 flex items-center justify-center rounded-full bg-black/30 hover:bg-black/50 transition-colors"
+            onClick={() => setLightboxSrc(null)}
+          >
+            ✕
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Foto de mascota"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
         </div>
       )}
 
