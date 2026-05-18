@@ -207,6 +207,7 @@ export default function MyReports() {
         params: {
           q:           pet.descripcion,
           tipoOpuesto: pet.tipoReporte === 'PERDIDO' ? 'ENCONTRADO' : 'PERDIDO',
+          especie:     pet.especie,
           lat:         pet.latitud,
           lng:         pet.longitud,
         },
