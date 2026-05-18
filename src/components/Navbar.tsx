@@ -50,9 +50,15 @@ export default function Navbar() {
     if (!opening) return;
     setLoadingNotifs(true);
     try {
-      const { data } = await api.get('/notifications');
-      setNotifs(data);
-    } catch {
+      const { data } = await api.get('/notifications', { params: { page: 0, size: 20 } });
+      console.log('[Notificaciones] respuesta raw:', data);
+      // Spring puede devolver array plano o Page<T> con { content: [...] }
+      const list: Notif[] = Array.isArray(data)
+        ? data
+        : (data?.content ?? data?.notifications ?? []);
+      setNotifs(list);
+    } catch (err) {
+      console.error('[Notificaciones] error al cargar:', err);
       setNotifs([]);
     } finally {
       setLoadingNotifs(false);
