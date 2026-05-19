@@ -274,6 +274,7 @@ export default function Map() {
   const [matchViewData, setMatchViewData] = useState<MatchViewData | null>(null);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
     const state = routerLocation.state as { pickingLocation?: boolean; matchView?: MatchViewData } | null;
     if (state?.pickingLocation) {
       setLocationPickerMode(true);

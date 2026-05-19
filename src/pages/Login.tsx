@@ -18,7 +18,7 @@ export default function Login() {
 
     try {
       await login(email, password);
-      navigate('/mapa');
+      navigate('/');
     } catch (err) {
       setError('Error al iniciar sesión. Verifica tus credenciales.');
     } finally {
