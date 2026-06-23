@@ -206,25 +206,33 @@ export default function Register() {
             </div>
 
             {/* Terms & Conditions */}
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className={`flex items-start gap-3 rounded-lg p-4 border ${!termsAccepted && error ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-200'}`}>
               <input
                 id="terms"
                 type="checkbox"
                 checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  if (e.target.checked) setError('');
+                }}
                 className="mt-0.5 h-4 w-4 accent-green-600 cursor-pointer flex-shrink-0"
               />
-              <label htmlFor="terms" className="text-sm text-gray-700 cursor-pointer leading-snug">
-                Acepto que mis datos de contacto (nombre, correo y teléfono) puedan ser compartidos
-                con otros usuarios de GeoPatitas para facilitar la reunificación de mascotas perdidas.{' '}
-                <button
-                  type="button"
-                  onClick={() => setShowTerms(true)}
-                  className="text-green-600 hover:text-green-700 underline font-medium"
-                >
-                  Ver términos completos
-                </button>
-              </label>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="terms" className="text-sm text-gray-700 cursor-pointer leading-snug">
+                  Acepto que mis datos de contacto (nombre, correo y teléfono) puedan ser compartidos
+                  con otros usuarios de GeoPatitas para facilitar la reunificación de mascotas perdidas.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTerms(true)}
+                    className="text-green-600 hover:text-green-700 underline font-medium"
+                  >
+                    Ver términos completos
+                  </button>
+                </label>
+                {!termsAccepted && error && (
+                  <p className="text-red-600 text-xs font-medium">⚠ {error}</p>
+                )}
+              </div>
             </div>
 
             {/* Submit Button */}
