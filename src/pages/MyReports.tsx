@@ -111,9 +111,10 @@ export default function MyReports() {
   const [savingEdit,   setSavingEdit]   = useState(false);
 
   // Modal: Marcar como resuelto (flow directo)
-  const [resolveModal,    setResolveModal]    = useState<PetFromApi | null>(null);
-  const [resolveReason,   setResolveReason]   = useState('');
-  const [resolvingDirect, setResolvingDirect] = useState(false);
+  const [resolveModal,      setResolveModal]      = useState<PetFromApi | null>(null);
+  const [resolveReason,     setResolveReason]     = useState('');
+  const [resolvingDirect,   setResolvingDirect]   = useState(false);
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false);
 
   // Modal: Match de reportes
   const [matchModal,     setMatchModal]     = useState<PetFromApi | null>(null);
@@ -204,6 +205,7 @@ export default function MyReports() {
 
   const openResolve = (pet: PetFromApi) => {
     setResolveReason('');
+    setShowResolveConfirm(false);
     setResolveModal(pet);
   };
 
@@ -511,11 +513,20 @@ export default function MyReports() {
             onClick={e => e.stopPropagation()}
           >
             {detailModal.fotos.length > 0 ? (
-              <img
-                src={detailModal.fotos[0]}
-                alt={detailModal.nombre ?? 'Mascota'}
-                className="w-full h-52 object-cover rounded-t-2xl"
-              />
+              <button
+                className="w-full h-52 relative overflow-hidden rounded-t-2xl group focus:outline-none cursor-zoom-in"
+                onClick={() => setLightboxSrc(detailModal.fotos[0])}
+                title="Ver foto completa"
+              >
+                <img
+                  src={detailModal.fotos[0]}
+                  alt={detailModal.nombre ?? 'Mascota'}
+                  className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center">
+                  <span className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-lg">🔍</span>
+                </div>
+              </button>
             ) : (
               <div className="w-full h-36 rounded-t-2xl bg-gray-100 flex items-center justify-center text-5xl">
                 {especieEmoji(detailModal.especie)}
@@ -585,11 +596,20 @@ export default function MyReports() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Foto de la mascota</label>
                   {editModal.fotos[0] && !editNewPhoto && (
-                    <img
-                      src={editModal.fotos[0]}
-                      alt="Foto actual"
-                      className="w-full h-40 object-cover rounded-xl mb-2"
-                    />
+                    <button
+                      className="w-full h-40 relative overflow-hidden rounded-xl mb-2 group focus:outline-none cursor-zoom-in"
+                      onClick={() => setLightboxSrc(editModal.fotos[0])}
+                      title="Ver foto completa"
+                    >
+                      <img
+                        src={editModal.fotos[0]}
+                        alt="Foto actual"
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-colors duration-200 flex items-center justify-center">
+                        <span className="text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 drop-shadow-lg">🔍</span>
+                      </div>
+                    </button>
                   )}
                   {editNewPhoto && (
                     <div className="mb-2 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
@@ -768,17 +788,61 @@ export default function MyReports() {
 
             <div className="flex gap-3">
               <button
-                onClick={handleResolveDirect}
+                onClick={() => setShowResolveConfirm(true)}
                 disabled={!resolveReason || resolvingDirect}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {resolvingDirect ? 'Guardando...' : 'Confirmar y cerrar caso'}
+                Confirmar y cerrar caso
               </button>
               <button
                 onClick={() => setResolveModal(null)}
                 className="px-5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition-colors"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Confirmación cierre de caso
+      ════════════════════════════════════════════════ */}
+      {showResolveConfirm && resolveModal && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[4000] p-4"
+          onClick={() => setShowResolveConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center text-center gap-3 mb-5">
+              <span className="text-5xl">⚠️</span>
+              <h3 className="text-lg font-bold text-gray-800">¿Estás seguro?</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Al confirmar, el caso de{' '}
+                <strong>{resolveModal.nombre || resolveModal.especie}</strong> quedará
+                clasificado como <strong>Resuelto</strong> y se dará por terminado.{' '}
+                Esta acción no se puede deshacer.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setShowResolveConfirm(false);
+                  await handleResolveDirect();
+                }}
+                disabled={resolvingDirect}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {resolvingDirect ? 'Cerrando...' : 'Sí, cerrar caso'}
+              </button>
+              <button
+                onClick={() => setShowResolveConfirm(false)}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl transition-colors"
+              >
+                Volver
               </button>
             </div>
           </div>

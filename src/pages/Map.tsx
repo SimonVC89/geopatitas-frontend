@@ -59,6 +59,24 @@ const COVERAGE_ZONE: [number, number][] = [
   [-71.720, -33.112],
   [-71.720, -32.940],
 ];
+
+// Línea de costa — delimita el Océano Pacífico dentro de COVERAGE_ZONE [lng, lat]
+const SEA_ZONE: [number, number][] = [
+  [-71.720, -32.940],
+  [-71.520, -32.918],  // costa norte de Concón
+  [-71.537, -32.953],  // Reñaca Norte
+  [-71.552, -32.968],  // Reñaca
+  [-71.562, -32.984],  // Playa de Viña del Mar
+  [-71.578, -33.003],  // Caleta Abarca / sur de Viña
+  [-71.590, -33.015],  // costa norte de Valparaíso
+  [-71.638, -33.029],  // cerros costeros de Valparaíso
+  [-71.662, -33.042],  // Punta Ángeles / Playa Ancha
+  [-71.660, -33.060],  // sur de Punta Ángeles
+  [-71.683, -33.118],  // Laguna Verde
+  [-71.720, -33.112],
+  [-71.720, -32.940],
+];
+
 const inverseMask = {
   type: 'Feature' as const,
   geometry: { type: 'Polygon' as const, coordinates: [WORLD, COVERAGE_ZONE] },
@@ -180,6 +198,19 @@ const makeDistanceIcon = (label: string) => new DivIcon({
   iconAnchor: [55, 15],
 });
 
+// ─── Punto dentro de un polígono [lng, lat] (ray casting) ───────
+function isInsidePolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 // ─── Haversine (distancia en km entre dos coordenadas) ───────────
 const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
   const R = 6371;
@@ -260,6 +291,7 @@ export default function Map() {
   const [submittingReport,  setSubmittingReport]  = useState(false);
   const [selectedReport,    setSelectedReport]    = useState<ReportDisplay | null>(null);
   const [lightboxSrc,       setLightboxSrc]       = useState<string | null>(null);
+  const [outOfZoneError,    setOutOfZoneError]    = useState<string | null>(null);
   const [mapContactOpen,    setMapContactOpen]    = useState(false);
   const [mapContactLoading, setMapContactLoading] = useState(false);
   const [mapContactData,    setMapContactData]    = useState<{
@@ -320,6 +352,16 @@ export default function Map() {
   };
 
   const handleMapPlace = (pos: [number,number]) => {
+    if (!isInsidePolygon(pos[0], pos[1], COVERAGE_ZONE)) {
+      setOutOfZoneError('Zona fuera del área de cobertura. Selecciona un punto dentro del Gran Valparaíso (área iluminada en el mapa).');
+      setTimeout(() => setOutOfZoneError(null), 4000);
+      return;
+    }
+    if (isInsidePolygon(pos[0], pos[1], SEA_ZONE)) {
+      setOutOfZoneError('No es posible crear reportes en el mar. Selecciona un punto en tierra firme.');
+      setTimeout(() => setOutOfZoneError(null), 4000);
+      return;
+    }
     setPawPosition(pos);
     setIsPlacingPaw(false);
     if (locationPickerMode) { setShowLocationConfirm(true); return; }
@@ -581,7 +623,10 @@ export default function Map() {
       )}
 
       {showExploreGuide && (
-        <div className="explore-guide-overlay" onClick={() => setShowExploreGuide(false)} />
+        <>
+          <div className="explore-guide-overlay" onClick={() => setShowExploreGuide(false)} />
+          <div className="explore-guide-paw">🐾</div>
+        </>
       )}
 
       {showReportGuide && (
@@ -968,7 +1013,7 @@ export default function Map() {
 
                 {/* Card 1 — Explorar zona */}
                 <div
-                  className="sidebar-intro sidebar-intro--explore"
+                  className={`sidebar-intro sidebar-intro--explore${showExploreGuide ? ' sidebar-intro--lit' : ''}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => { setExploreMode(true); setFiltersApplied(false); setShowExploreGuide(true); }}
@@ -985,7 +1030,7 @@ export default function Map() {
 
                 {/* Card 2 — Crear reporte */}
                 <div
-                  className="sidebar-intro sidebar-intro--report"
+                  className={`sidebar-intro sidebar-intro--report${showExploreGuide ? ' sidebar-intro--blurred' : ''}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => setShowReportGuide(true)}
@@ -1156,7 +1201,12 @@ export default function Map() {
           {/* ── MAPA ── */}
           <div className="map-container-wrap">
 
-            {isPlacingPaw && (
+            {outOfZoneError ? (
+              <div className="map-placing-hint map-placing-hint--error">
+                <span className="map-placing-hint__icon">⚠️</span>
+                <span className="map-placing-hint__text">{outOfZoneError}</span>
+              </div>
+            ) : isPlacingPaw && (
               <div className="map-placing-hint">
                 <span className="map-placing-hint__icon">
                   {locationPickerMode ? '📍' : exploreMode ? '🔍' : '🐾'}
