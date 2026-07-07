@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { DivIcon } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { isInsidePolygon, COVERAGE_ZONE } from '../utils/geo';
+
+const locationPinIcon = new DivIcon({
+  html: '<div style="font-size:2rem;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.35))">📍</div>',
+  className: '',
+  iconSize: [32, 32],
+  iconAnchor: [10, 28],
+});
 
 const ESPECIE_MAP: Record<string, string> = {
   dog: 'Perro', cat: 'Gato', bird: 'Ave', rabbit: 'Conejo', other: 'Otro',
@@ -33,6 +44,9 @@ export default function CreateReport() {
   });
 
   const [locationPicked,        setLocationPicked]        = useState(false);
+  const [gpsUsed,               setGpsUsed]               = useState(false);
+  const [geoLoading,            setGeoLoading]            = useState(false);
+  const [geoError,              setGeoError]              = useState<string | null>(null);
   const [loading,               setLoading]               = useState(false);
   const [forThirdParty,         setForThirdParty]         = useState(false);
 
@@ -70,7 +84,39 @@ export default function CreateReport() {
     navigate('/mapa', { state: { pickingLocation: true } });
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleGpsLocation = () => {
+    setGeoError(null);
+    if (!navigator.geolocation) {
+      setGeoError('Tu navegador no soporta geolocalización. Selecciona el punto en el mapa.');
+      return;
+    }
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setGeoLoading(false);
+        if (!isInsidePolygon(lat, lng, COVERAGE_ZONE)) {
+          setGeoError('Tu ubicación está fuera del área de cobertura (Gran Valparaíso). Selecciona el punto manualmente en el mapa.');
+          return;
+        }
+        // No validamos SEA_ZONE en GPS: la imprecisión de desktop puede caer en la costa
+        setFormData(f => ({ ...f, latitude: String(lat), longitude: String(lng) }));
+        setLocationPicked(true);
+        setGpsUsed(true);
+      },
+      err => {
+        setGeoLoading(false);
+        setGeoError(
+          err.code === 1
+            ? 'Permiso de ubicación denegado. Selecciona el punto manualmente en el mapa.'
+            : 'No se pudo obtener tu ubicación. Selecciona el punto manualmente en el mapa.',
+        );
+      },
+      { timeout: 10000, maximumAge: 0 },
+    );
+  };
+
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!locationPicked) {
       alert('Por favor selecciona la ubicación en el mapa antes de continuar.');
@@ -274,29 +320,76 @@ export default function CreateReport() {
               </p>
 
               {!locationPicked ? (
-                <button
-                  type="button"
-                  onClick={handleGoToMapPicker}
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
-                >
-                  🗺️ Seleccionar ubicación en el mapa
-                </button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={handleGoToMapPicker}
+                      className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                    >
+                      🗺️ Seleccionar ubicación en el mapa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGpsLocation}
+                      disabled={geoLoading}
+                      className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                    >
+                      {geoLoading ? '📡 Obteniendo…' : '📍 Usar mi ubicación actual'}
+                    </button>
+                  </div>
+                  {geoError && (
+                    <p className="text-red-600 text-sm flex items-start gap-1.5">
+                      <span>⚠</span><span>{geoError}</span>
+                    </p>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
                   <span className="text-green-600 text-xl">✓</span>
                   <div className="flex-1">
-                    <p className="text-green-800 font-semibold text-sm">Ubicación marcada en el mapa</p>
+                    <p className="text-green-800 font-semibold text-sm">
+                      {gpsUsed ? 'Ubicación GPS obtenida' : 'Ubicación marcada en el mapa'}
+                    </p>
+                    {gpsUsed && (
+                      <p className="text-amber-600 text-xs mt-0.5">
+                        ⚠ Posición aproximada basada en tu dispositivo
+                      </p>
+                    )}
                     <p className="text-green-600 text-xs mt-0.5">
                       {parseFloat(formData.latitude).toFixed(5)}, {parseFloat(formData.longitude).toFixed(5)}
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={handleGoToMapPicker}
+                    onClick={() => { setLocationPicked(false); setGpsUsed(false); setGeoError(null); }}
                     className="text-sm text-blue-600 hover:underline font-medium"
                   >
                     Cambiar
                   </button>
+                </div>
+              )}
+
+              {locationPicked && formData.latitude && formData.longitude && (
+                <div className="mt-3 rounded-xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 180 }}>
+                  <MapContainer
+                    center={[parseFloat(formData.latitude), parseFloat(formData.longitude)]}
+                    zoom={15}
+                    scrollWheelZoom={false}
+                    dragging={false}
+                    zoomControl={false}
+                    touchZoom={false}
+                    doubleClickZoom={false}
+                    keyboard={false}
+                    attributionControl={false}
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Marker
+                      position={[parseFloat(formData.latitude), parseFloat(formData.longitude)]}
+                      icon={locationPinIcon}
+                    />
+                  </MapContainer>
                 </div>
               )}
 

@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import { MapPin, SlidersHorizontal, Search, ChevronDown, Upload, CheckCircle, PawPrint } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
+import { COVERAGE_ZONE, SEA_ZONE, isInsidePolygon } from '../utils/geo';
 import Footer from '../components/Footer';
 import './Map.css';
 
@@ -49,33 +50,6 @@ const DEFAULT_ZOOM = 11;
 
 // ─── Máscara inversa ─────────────────────────────────────────────
 const WORLD: [number, number][] = [[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]];
-const COVERAGE_ZONE: [number, number][] = [
-  [-71.720, -32.940],
-  [-71.555, -32.930],
-  [-71.430, -32.958],
-  [-71.375, -33.015],
-  [-71.375, -33.098],
-  [-71.445, -33.148],
-  [-71.720, -33.112],
-  [-71.720, -32.940],
-];
-
-// Línea de costa — delimita el Océano Pacífico dentro de COVERAGE_ZONE [lng, lat]
-const SEA_ZONE: [number, number][] = [
-  [-71.720, -32.940],
-  [-71.520, -32.918],  // costa norte de Concón
-  [-71.537, -32.953],  // Reñaca Norte
-  [-71.552, -32.968],  // Reñaca
-  [-71.562, -32.984],  // Playa de Viña del Mar
-  [-71.578, -33.003],  // Caleta Abarca / sur de Viña
-  [-71.590, -33.015],  // costa norte de Valparaíso
-  [-71.638, -33.029],  // cerros costeros de Valparaíso
-  [-71.662, -33.042],  // Punta Ángeles / Playa Ancha
-  [-71.660, -33.060],  // sur de Punta Ángeles
-  [-71.683, -33.118],  // Laguna Verde
-  [-71.720, -33.112],
-  [-71.720, -32.940],
-];
 
 const inverseMask = {
   type: 'Feature' as const,
@@ -198,19 +172,6 @@ const makeDistanceIcon = (label: string) => new DivIcon({
   iconAnchor: [55, 15],
 });
 
-// ─── Punto dentro de un polígono [lng, lat] (ray casting) ───────
-function isInsidePolygon(lat: number, lng: number, polygon: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [xi, yi] = polygon[i];
-    const [xj, yj] = polygon[j];
-    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
 // ─── Haversine (distancia en km entre dos coordenadas) ───────────
 const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
   const R = 6371;
@@ -302,6 +263,10 @@ export default function Map() {
   const [locationPickerMode,   setLocationPickerMode]   = useState(false);
   const [showLocationConfirm,  setShowLocationConfirm]  = useState(false);
 
+  // Elección de método de ubicación para nuevo reporte
+  const [locationChoiceMode,   setLocationChoiceMode]   = useState(false);
+  const [geoLoading,           setGeoLoading]           = useState(false);
+
   // Modo vista de coincidencia (desde /mis-reportes → match)
   const [matchViewData, setMatchViewData] = useState<MatchViewData | null>(null);
 
@@ -339,25 +304,54 @@ export default function Map() {
     setReportFormOpen(false);
     setJoyrideRun(false);
     setJoyrideStep(0);
+    setLocationChoiceMode(false);
     if (!isAuthenticated) {
-      setShowGuestInfo(true); // modal custom — no Joyride
+      setShowGuestInfo(true);
     } else {
-      setIsPlacingPaw(true);  // registrado: directo al banner del mapa
+      setLocationChoiceMode(true);
     }
   };
 
   const handleGuestInfoContinue = () => {
     setShowGuestInfo(false);
-    setIsPlacingPaw(true);    // ahora sí activa el banner del mapa
+    setLocationChoiceMode(true);
   };
 
-  const handleMapPlace = (pos: [number,number]) => {
+  const handleGpsLocation = () => {
+    if (!navigator.geolocation) {
+      setOutOfZoneError('Tu navegador no soporta geolocalización. Usa el modo manual en el mapa.');
+      setTimeout(() => setOutOfZoneError(null), 4000);
+      setLocationChoiceMode(false);
+      return;
+    }
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        setGeoLoading(false);
+        setLocationChoiceMode(false);
+        // skipSeaCheck=true: la imprecisión de GPS en desktop puede caer en la costa
+        handleMapPlace([pos.coords.latitude, pos.coords.longitude], true);
+      },
+      err => {
+        setGeoLoading(false);
+        setLocationChoiceMode(false);
+        const msg = err.code === 1
+          ? 'Permiso de ubicación denegado. Puedes elegir el punto manualmente en el mapa.'
+          : 'No se pudo obtener tu ubicación. Usa el modo manual en el mapa.';
+        setOutOfZoneError(msg);
+        setTimeout(() => setOutOfZoneError(null), 5000);
+      },
+      { timeout: 15000, maximumAge: 30000 },
+    );
+  };
+
+  const handleMapPlace = (pos: [number,number], skipSeaCheck = false) => {
     if (!isInsidePolygon(pos[0], pos[1], COVERAGE_ZONE)) {
       setOutOfZoneError('Zona fuera del área de cobertura. Selecciona un punto dentro del Gran Valparaíso (área iluminada en el mapa).');
       setTimeout(() => setOutOfZoneError(null), 4000);
       return;
     }
-    if (isInsidePolygon(pos[0], pos[1], SEA_ZONE)) {
+    if (!skipSeaCheck && isInsidePolygon(pos[0], pos[1], SEA_ZONE)) {
       setOutOfZoneError('No es posible crear reportes en el mar. Selecciona un punto en tierra firme.');
       setTimeout(() => setOutOfZoneError(null), 4000);
       return;
@@ -1201,7 +1195,33 @@ export default function Map() {
           {/* ── MAPA ── */}
           <div className="map-container-wrap">
 
-            {outOfZoneError ? (
+            {locationChoiceMode ? (
+              <div className="map-location-choice">
+                <p className="map-location-choice__title">¿Cómo quieres ubicar tu reporte?</p>
+                <div className="map-location-choice__options">
+                  <button
+                    className="map-location-choice__opt"
+                    onClick={() => { setLocationChoiceMode(false); setIsPlacingPaw(true); }}
+                  >
+                    <span className="map-location-choice__opt-icon">🗺️</span>
+                    <span className="map-location-choice__opt-label">Elegir en el mapa</span>
+                    <span className="map-location-choice__opt-sub">Indica el lugar exacto del hallazgo, aunque ya no estés ahí</span>
+                  </button>
+                  <button
+                    className="map-location-choice__opt"
+                    onClick={handleGpsLocation}
+                    disabled={geoLoading}
+                  >
+                    <span className="map-location-choice__opt-icon">{geoLoading ? '📡' : '📍'}</span>
+                    <span className="map-location-choice__opt-label">{geoLoading ? 'Obteniendo ubicación…' : 'Usar mi ubicación'}</span>
+                    <span className="map-location-choice__opt-sub">{geoLoading ? 'Espera un momento' : 'Coloca el marcador donde estás ahora mismo'}</span>
+                  </button>
+                </div>
+                <button className="map-location-choice__cancel" onClick={() => setLocationChoiceMode(false)}>
+                  Cancelar
+                </button>
+              </div>
+            ) : outOfZoneError ? (
               <div className="map-placing-hint map-placing-hint--error">
                 <span className="map-placing-hint__icon">⚠️</span>
                 <span className="map-placing-hint__text">{outOfZoneError}</span>
