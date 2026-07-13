@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
 import {
-  MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, Polyline, useMapEvents, useMap,
+  MapContainer, TileLayer, Marker, GeoJSON, Circle, Polyline, useMapEvents, useMap,
 } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { Joyride, STATUS, EVENTS, ACTIONS } from 'react-joyride';
@@ -56,10 +56,6 @@ const inverseMask = {
   geometry: { type: 'Polygon' as const, coordinates: [WORLD, COVERAGE_ZONE] },
   properties: {},
 };
-
-const mockMyReports = [
-  { id: 'm1', type: 'found' as const, status: 'active' as const, position: [-33.055, -71.61] as [number,number], petName: 'Desconocido', description: 'Perro blanco con mancha negra' },
-];
 
 // ─── Emoji por especie ───────────────────────────────────────────
 const especieEmoji = (e: string) =>
@@ -227,8 +223,10 @@ export default function Map() {
   const [filterEstado,  setFilterEstado]  = useState('Activo');
 
   // Mis reportes
-  const [showMyReports, setShowMyReports] = useState(false);
-  const [guestMessage,  setGuestMessage]  = useState(false);
+  const [showMyReports,    setShowMyReports]    = useState(false);
+  const [myReports,        setMyReports]        = useState<ReportDisplay[]>([]);
+  const [loadingMyReports, setLoadingMyReports] = useState(false);
+  const [guestMessage,     setGuestMessage]     = useState(false);
 
   // Modo exploración
   const [exploreMode,      setExploreMode]      = useState(false);
@@ -394,6 +392,22 @@ export default function Map() {
     setJoyrideRun(false);
     setIsPlacingPaw(false);
     setJoyrideStep(0);
+  };
+
+  const handleToggleMyReports = async () => {
+    const next = !showMyReports;
+    setShowMyReports(next);
+    if (next && myReports.length === 0) {
+      setLoadingMyReports(true);
+      try {
+        const { data } = await api.get('/users/me/pets');
+        setMyReports((data as any[]).map(normalizeApiPet));
+      } catch {
+        // silently ignore — el botón se puede reintentar
+      } finally {
+        setLoadingMyReports(false);
+      }
+    }
   };
 
   const handleSearch = async () => {
@@ -1165,10 +1179,10 @@ export default function Map() {
                   {isAuthenticated ? (
                     <button
                       className={`sidebar-btn${showMyReports ? ' sidebar-btn--active' : ''}`}
-                      onClick={() => setShowMyReports(v => !v)}
+                      onClick={handleToggleMyReports}
                     >
                       <Search size={15} />
-                      {showMyReports ? 'Ocultar mis reportes' : 'Mis reportes'}
+                      {loadingMyReports ? 'Cargando...' : showMyReports ? 'Ocultar mis reportes' : 'Mis reportes'}
                     </button>
                   ) : (
                     <>
@@ -1290,16 +1304,13 @@ export default function Map() {
                 />
               ))}
 
-              {!matchView && showMyReports && mockMyReports.map(r => (
-                <Marker key={r.id} position={r.position} icon={lupaIcon}>
-                  <Popup>
-                    <div className="map-popup">
-                      <span className="map-popup__badge">✅ Encontrado — <strong>Tu reporte</strong></span>
-                      <p className="map-popup__name">{r.petName}</p>
-                      <p className="map-popup__desc">{r.description}</p>
-                    </div>
-                  </Popup>
-                </Marker>
+              {!matchView && showMyReports && myReports.map(r => (
+                <Marker
+                  key={r.id}
+                  position={r.position}
+                  icon={lupaIcon}
+                  eventHandlers={{ click: () => setSelectedReport(r) }}
+                />
               ))}
 
               {matchView && (
