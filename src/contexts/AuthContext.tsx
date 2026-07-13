@@ -72,11 +72,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = () => {
-    setUser(null);
-    setIsGuest(false);
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     localStorage.removeItem('guestMode');
+    window.location.href = '/';
   };
 
   const continueAsGuest = () => {

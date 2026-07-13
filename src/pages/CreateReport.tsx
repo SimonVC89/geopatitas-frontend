@@ -49,6 +49,8 @@ export default function CreateReport() {
   const [geoError,              setGeoError]              = useState<string | null>(null);
   const [loading,               setLoading]               = useState(false);
   const [forThirdParty,         setForThirdParty]         = useState(false);
+  const [inlineError,           setInlineError]           = useState<string | null>(null);
+  const [success,               setSuccess]               = useState(false);
 
   // Restaurar formulario + coordenadas al volver del mapa
   useEffect(() => {
@@ -118,8 +120,9 @@ export default function CreateReport() {
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
+    setInlineError(null);
     if (!locationPicked) {
-      alert('Por favor selecciona la ubicación en el mapa antes de continuar.');
+      setInlineError('Por favor selecciona la ubicación en el mapa antes de continuar.');
       return;
     }
     setLoading(true);
@@ -161,18 +164,18 @@ export default function CreateReport() {
         await api.post('/pets', payload);
       } else {
         if (!formData.contactEmail) {
-          alert('Por favor ingresa tu email de contacto.');
+          setInlineError('Por favor ingresa tu email de contacto.');
+          setLoading(false);
           return;
         }
         await api.post('/pets/guest', { ...base, contactoEmail: formData.contactEmail });
       }
 
-      alert('¡Reporte creado exitosamente!');
-      navigate('/mapa');
+      setSuccess(true);
+      setTimeout(() => navigate('/mis-reportes'), 1500);
     } catch (error: any) {
-      console.error('Error creando reporte:', error);
       const msg = error.response?.data?.message ?? 'Error al crear el reporte. Intenta nuevamente.';
-      alert(msg);
+      setInlineError(msg);
     } finally {
       setLoading(false);
     }
@@ -513,18 +516,32 @@ export default function CreateReport() {
               )}
             </div>
 
+            {/* Mensajes inline */}
+            {inlineError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <span className="mt-0.5">⚠</span>
+                <span>{inlineError}</span>
+              </div>
+            )}
+            {success && (
+              <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm font-medium">
+                <span>✓</span>
+                <span>¡Reporte creado exitosamente! Redirigiendo...</span>
+              </div>
+            )}
+
             {/* Botones */}
-            <div className="flex gap-4 pt-6">
+            <div className="flex gap-4 pt-2">
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || success}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50"
               >
                 {loading ? 'Creando...' : 'Crear Reporte'}
               </button>
               <button
                 type="button"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate(isAuthenticated ? '/mis-reportes' : '/mapa')}
                 className="px-6 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 rounded-lg transition-colors"
               >
                 Cancelar
