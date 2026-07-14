@@ -109,12 +109,14 @@ export default function MyReports() {
   const [editForm,     setEditForm]     = useState<EditForm | null>(null);
   const [editNewPhoto, setEditNewPhoto] = useState<File | null>(null);
   const [savingEdit,   setSavingEdit]   = useState(false);
+  const [editError,    setEditError]    = useState<string | null>(null);
 
   // Modal: Marcar como resuelto (flow directo)
   const [resolveModal,      setResolveModal]      = useState<PetFromApi | null>(null);
   const [resolveReason,     setResolveReason]     = useState('');
   const [resolvingDirect,   setResolvingDirect]   = useState(false);
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
+  const [resolveError,      setResolveError]      = useState<string | null>(null);
 
   // Modal: Match de reportes
   const [matchModal,     setMatchModal]     = useState<PetFromApi | null>(null);
@@ -122,6 +124,7 @@ export default function MyReports() {
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [confirmedMatch, setConfirmedMatch] = useState<MatchItem | null>(null);
   const [resolving,      setResolving]      = useState(false);
+  const [resolveMatchError, setResolveMatchError] = useState<string | null>(null);
 
   // Lightbox de foto (dentro del modal de match)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -167,7 +170,7 @@ export default function MyReports() {
     setEditModal(pet);
   };
 
-  const closeEdit = () => { setEditModal(null); setEditNewPhoto(null); };
+  const closeEdit = () => { setEditModal(null); setEditNewPhoto(null); setEditError(null); };
 
   const handleEditChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
@@ -195,7 +198,7 @@ export default function MyReports() {
       );
       closeEdit();
     } catch {
-      alert('Error al guardar los cambios. Intenta nuevamente.');
+      setEditError('Error al guardar los cambios. Intenta nuevamente.');
     } finally {
       setSavingEdit(false);
     }
@@ -219,7 +222,7 @@ export default function MyReports() {
       );
       setResolveModal(null);
     } catch {
-      alert('Error al actualizar el reporte. Intenta nuevamente.');
+      setResolveError('Error al actualizar el reporte. Intenta nuevamente.');
     } finally {
       setResolvingDirect(false);
     }
@@ -297,7 +300,7 @@ export default function MyReports() {
       );
       closeMatchModal();
     } catch {
-      alert('Error al marcar como resuelto. Intenta nuevamente.');
+      setResolveMatchError('Error al marcar como resuelto. Intenta nuevamente.');
     } finally {
       setResolving(false);
     }
@@ -721,7 +724,13 @@ export default function MyReports() {
 
               </div>
 
-              <div className="flex gap-3 mt-6">
+              {editError && (
+                <div className="flex items-start gap-2 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <span className="mt-0.5">⚠</span><span>{editError}</span>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-4">
                 <button
                   onClick={handleEditSubmit}
                   disabled={savingEdit}
@@ -785,6 +794,12 @@ export default function MyReports() {
                 </label>
               ))}
             </div>
+
+            {resolveError && (
+              <div className="flex items-start gap-2 mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <span className="mt-0.5">⚠</span><span>{resolveError}</span>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button
@@ -875,6 +890,12 @@ export default function MyReports() {
             </div>
 
             {/* Banner de confirmación + botón resolver */}
+            {resolveMatchError && (
+              <div className="mx-6 mt-4 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex-shrink-0">
+                <span className="mt-0.5">⚠</span><span>{resolveMatchError}</span>
+              </div>
+            )}
+
             {confirmedMatch && (
               <div className="mx-6 mt-4 bg-green-50 border border-green-300 rounded-xl p-4 flex-shrink-0">
                 <div className="flex items-start justify-between gap-4">
