@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { api } from '../services/api';
 import Footer from '../components/Footer';
+import PosterModal from '../components/PosterModal';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,9 @@ export default function MyReports() {
 
   // Lightbox de foto (dentro del modal de match)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // Modal: Generar póster
+  const [posterPet, setPosterPet] = useState<PetFromApi | null>(null);
 
   // Modal: Contacto del reportante de un match
   const [contactModal,   setContactModal]   = useState<MatchItem | null>(null);
@@ -461,6 +465,14 @@ export default function MyReports() {
                             >
                               Modificar reporte
                             </button>
+                            {r.tipoReporte === 'PERDIDO' && (
+                              <button
+                                onClick={() => setPosterPet(r)}
+                                className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 px-4 py-2 rounded-lg transition-colors font-semibold text-sm"
+                              >
+                                📋 Generar póster
+                              </button>
+                            )}
                             <button
                               onClick={() => openMatches(r)}
                               className="bg-yellow-50 hover:bg-yellow-100 text-yellow-800 border border-yellow-300 px-4 py-2 rounded-lg transition-colors font-semibold text-sm"
@@ -1174,6 +1186,13 @@ export default function MyReports() {
             onClick={e => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* ════════════════════════════════════════════════
+          MODAL — Generar póster "Se busca"
+      ════════════════════════════════════════════════ */}
+      {posterPet && (
+        <PosterModal pet={posterPet} onClose={() => setPosterPet(null)} />
       )}
 
       <Footer />
